@@ -924,7 +924,210 @@ function exportAllScenes() {
     return exportScenes(studio.scenes);
 }
 
+/* ייצוא ראשי: יוצר אודיו נפרד (WAV/PCM), מקליט וידאו בשקט, וממזג ל-MP4 (AAC)
+   כך שהקול מתנגן בכל נגן. אם המיזוג נכשל — נופלים לשיטת ההקלטה הישנה. */
 async function exportScenes(list) {
+    if (studio.exporting) return;
+    if (!studio.canvas.captureStream) { setStudioStatus('הדפדפן לא תומך בייצוא וידאו'); return; }
+    if (!list || list.length === 0) { setStudioStatus('אין סצנות לייצוא'); return; }
+    studio.exporting = true;
+    studio.editMode = false;
+    try {
+        await exportViaMux(list);
+        studio.exporting = false;
+    } catch (err) {
+        studio.exporting = false;
+        setStudioStatus('עובר לשיטת גיבוי... ' + (err.message || ''));
+        await exportScenesCapture(list);
+    }
+    loadSceneIntoStudio(studio.sceneIndex, false);
+}
+
+const EXPORT_LEAD = 0.45, EXPORT_TRAIL = 0.35, EXPORT_GAP = 0.8;
+
+async function exportViaMux(list) {
+    ensureAudioCtx();
+    const sr = studio.audioCtx.sampleRate;
+    const mode = premiumProvider() ? 'premium' : (studio.recordedBlob ? 'rec' : 'synth');
+
+    // 1) הכנת אודיו (AudioBuffer) לכל סצנה
+    const segs = [];
+    for (let i = 0; i < list.length; i++) {
+        setStudioStatus(`🎙️ מכין קול ${i + 1}/${list.length}...`);
+        segs.push(await getSceneAudioBuffer(list[i], mode, sr));
+    }
+
+    // 2) הקלטת וידאו בלבד (בלי רעשים) + ליפסינק שקט דרך gain=0
+    try { studio.analyser.disconnect(); } catch (e) { /* ignore */ }
+    const muteGain = studio.audioCtx.createGain();
+    muteGain.gain.value = 0;
+    studio.analyser.connect(muteGain);
+    muteGain.connect(studio.audioCtx.destination);
+
+    const mime = pickVideoOnlyMime();
+    const videoStream = studio.canvas.captureStream(30);
+    studio.videoChunks = [];
+    const recorder = new MediaRecorder(videoStream, { mimeType: mime });
+    recorder.ondataavailable = (e) => { if (e.data.size) studio.videoChunks.push(e.data); };
+    const done = new Promise((res) => { recorder.onstop = res; });
+    recorder.start();
+
+    for (let i = 0; i < list.length; i++) {
+        const scene = list[i];
+        setStudioStatus(`🎬 מקליט סצנה ${i + 1}/${list.length}...`);
+        await loadStudioImage(scene.src);
+        studio.mouth = scene.mouth || { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
+        studio.eyes = scene.eyes || null;
+        studio.mouth2 = scene.mouth2 || null;
+        studio.eyes2 = scene.eyes2 || null;
+        studio.activeWho = scene.who || 1;
+        await sleepFrames(EXPORT_LEAD * 1000);
+        if (segs[i]) await playBufferSilentLipsync(segs[i]);
+        else await sleepFrames(EXPORT_GAP * 1000);
+        await sleepFrames(EXPORT_TRAIL * 1000);
+    }
+    recorder.stop();
+    await done;
+    try { studio.analyser.disconnect(); } catch (e) { /* ignore */ }
+
+    // 3) בניית קובץ WAV מכל הקטעים + שתיקות בין סצנות
+    const wavBlob = buildWavFromSegments(segs, sr);
+    const videoBlob = new Blob(studio.videoChunks, { type: 'video/webm' });
+
+    // 4) מיזוג ל-MP4 (אודיו AAC)
+    setStudioStatus('🎞️ ממזג וידאו וקול ל-MP4... (טעינה ראשונה עשויה לקחת רגע)');
+    const mp4 = await muxToMp4(videoBlob, wavBlob);
+    downloadVideoBlob(mp4, 'mp4');
+    const voiceNote = mode === 'synth' ? ' (קול דמות — לעברית אמיתית הגדירו קול פרימיום ⚙️)' : '';
+    setStudioStatus('✅ הסרטון מוכן כ-MP4 עם קול! אפשר לשתף 📤' + voiceNote);
+}
+
+// מחזיר AudioBuffer לסצנה (פרימיום/מוקלט/סינתטי) או null אם אין טקסט
+async function getSceneAudioBuffer(scene, mode, sr) {
+    const text = (scene.text || '').trim();
+    try {
+        if (mode === 'premium') {
+            if (!text) return null;
+            return await premiumFetchBuffer(text);
+        }
+        if (mode === 'rec') {
+            const ab = await studio.recordedBlob.arrayBuffer();
+            return await studio.audioCtx.decodeAudioData(ab.slice(0));
+        }
+        if (!text) return null;
+        return await renderSynthBuffer(text, scene, sr);
+    } catch (err) {
+        return null;
+    }
+}
+
+// מנגן AudioBuffer בשקט (דרך gain=0) רק כדי להניע את הליפסינק בזמן ההקלטה
+function playBufferSilentLipsync(buf) {
+    return new Promise((resolve) => {
+        const src = studio.audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(studio.analyser);
+        startAmplitudeLipSync();
+        src.onended = () => { stopAmplitudeLipSync(); try { src.disconnect(); } catch (e) {} resolve(); };
+        src.start();
+    });
+}
+
+// מרנדר את קול הדמות הסינתטי ל-AudioBuffer (לא מתנגן בקול)
+async function renderSynthBuffer(text, scene, sr) {
+    const arr = textToVisemes(text || '');
+    if (!arr.length) return null;
+    const step = Math.max(0.06, 0.1 / (scene.rate || 1));
+    const total = Math.max(0.25, arr.length * step + 0.1);
+    const oac = new OfflineAudioContext(1, Math.ceil(total * sr), sr);
+    const base = scene.pitch || 1.2;
+    const gain = oac.createGain();
+    gain.gain.value = 0.0001;
+    gain.connect(oac.destination);
+    const osc = oac.createOscillator();
+    osc.type = 'triangle';
+    const lfo = oac.createOscillator();
+    lfo.type = 'sine'; lfo.frequency.value = 6;
+    const lfoGain = oac.createGain(); lfoGain.gain.value = 7;
+    lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+    osc.connect(gain);
+    const freqFor = (v) => ({ AA: 230, EE: 300, OO: 200, UU: 190, FF: 260, CONS: 250, PP: 0, SIL: 0 }[v] || 250) * base;
+    let t = 0;
+    arr.forEach((v) => {
+        const f = freqFor(v);
+        if (f > 0) {
+            osc.frequency.setValueAtTime(f, t);
+            gain.gain.setValueAtTime(0.0001, t);
+            gain.gain.exponentialRampToValueAtTime(0.28, t + step * 0.3);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + step * 0.92);
+        }
+        t += step;
+    });
+    osc.start(0); lfo.start(0);
+    osc.stop(t + 0.05); lfo.stop(t + 0.05);
+    return await oac.startRendering();
+}
+
+// מאחד את כל הקטעים לקובץ WAV מונו עם שתיקות לפי תזמון הווידאו
+function buildWavFromSegments(segs, sr) {
+    const lead = Math.round(EXPORT_LEAD * sr);
+    const trail = Math.round(EXPORT_TRAIL * sr);
+    const gap = Math.round(EXPORT_GAP * sr);
+    let totalLen = 0;
+    segs.forEach((b) => { totalLen += lead + (b ? b.length : gap) + trail; });
+    const out = new Float32Array(totalLen);
+    let off = 0;
+    segs.forEach((b) => {
+        off += lead;
+        if (b) { out.set(b.getChannelData(0), off); off += b.length; }
+        else { off += gap; }
+        off += trail;
+    });
+    return encodeWavMono(out, sr);
+}
+
+function encodeWavMono(samples, sr) {
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
+    const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sr, true);
+    view.setUint32(28, sr * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+    let off = 44;
+    for (let i = 0; i < samples.length; i++) {
+        let s = Math.max(-1, Math.min(1, samples[i]));
+        view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        off += 2;
+    }
+    return new Blob([view], { type: 'audio/wav' });
+}
+
+function pickVideoOnlyMime() {
+    const cands = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    for (const m of cands) { if (MediaRecorder.isTypeSupported(m)) return m; }
+    return 'video/webm';
+}
+
+async function muxToMp4(videoBlob, wavBlob) {
+    const ff = await ensureFfmpeg();
+    await ff.writeFile('v.webm', new Uint8Array(await videoBlob.arrayBuffer()));
+    await ff.writeFile('a.wav', new Uint8Array(await wavBlob.arrayBuffer()));
+    await ff.exec(['-i', 'v.webm', '-i', 'a.wav', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', 'out.mp4']);
+    const out = await ff.readFile('out.mp4');
+    return new Blob([out.buffer], { type: 'video/mp4' });
+}
+
+async function exportScenesCapture(list) {
     if (studio.exporting) return;
     if (!studio.canvas.captureStream) { setStudioStatus('הדפדפן לא תומך בייצוא וידאו'); return; }
     if (!list || list.length === 0) { setStudioStatus('אין סצנות לייצוא'); return; }
