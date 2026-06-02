@@ -81,6 +81,17 @@ function initStudio() {
     document.getElementById('studio-share').onclick = shareVideo;
     document.getElementById('studio-share-shot').onclick = shareSnapshot;
 
+    // הכתבה קולית (דיבור → טקסט)
+    const micBtn = document.getElementById('studio-mic');
+    const dlgMic = document.getElementById('dlg-mic');
+    if (!supportsDictation()) {
+        if (micBtn) micBtn.classList.add('hidden');
+        if (dlgMic) dlgMic.classList.add('hidden');
+    } else {
+        if (micBtn) micBtn.onclick = () => toggleDictation('studio-text', micBtn);
+        if (dlgMic) dlgMic.onclick = () => toggleDictation('dlg-text', dlgMic);
+    }
+
     // שיחה בין שתי דמויות
     document.getElementById('dlg-toggle').onclick = toggleDialog;
     document.getElementById('dlg-mark-1').onclick = () => startMarking('mouth');
@@ -1373,6 +1384,70 @@ function speakLinePreview(line) {
             resolve();
         }
     });
+}
+
+/* ----------------------------- הכתבה קולית (Speech-to-Text) ----------------------------- */
+let recog = null, recogBtn = null, recogTarget = null, recogBase = '';
+
+function supportsDictation() {
+    return ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
+}
+
+function toggleDictation(targetId, btn) {
+    if (!supportsDictation()) {
+        setStudioStatus('הדפדפן לא תומך בהכתבה קולית — נסו בכרום/אדג׳');
+        return;
+    }
+    // לחיצה חוזרת על אותו כפתור = עצירה
+    if (recog && recogBtn === btn) { stopDictation(); return; }
+    stopDictation();
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recog = new SR();
+    recog.lang = 'he-IL';
+    recog.interimResults = true;
+    recog.continuous = true;
+    recogBtn = btn;
+    recogTarget = document.getElementById(targetId);
+    recogBase = recogTarget && recogTarget.value ? recogTarget.value.trim() + ' ' : '';
+
+    recog.onresult = (e) => {
+        let finalText = '', interim = '';
+        for (let i = 0; i < e.results.length; i++) {
+            const r = e.results[i];
+            if (r.isFinal) finalText += r[0].transcript;
+            else interim += r[0].transcript;
+        }
+        if (recogTarget) recogTarget.value = recogBase + finalText + interim;
+    };
+    recog.onerror = (e) => {
+        const err = e.error || '';
+        if (err === 'not-allowed' || err === 'service-not-allowed') {
+            setStudioStatus('צריך לאשר גישה למיקרופון בדפדפן 🎤');
+        } else if (err !== 'aborted') {
+            setStudioStatus('שגיאת הכתבה: ' + err);
+        }
+        cleanupDictation();
+    };
+    recog.onend = () => { setStudioStatus('✅ הטקסט נכתב!'); cleanupDictation(); };
+
+    try {
+        recog.start();
+        btn.classList.add('recording');
+        setStudioStatus('🎤 דברו עכשיו... לחצו שוב על המיקרופון לסיום');
+    } catch (err) {
+        setStudioStatus('לא ניתן להתחיל הקלטה: ' + (err.message || ''));
+        cleanupDictation();
+    }
+}
+
+function stopDictation() {
+    if (recog) { try { recog.stop(); } catch (e) { /* ignore */ } }
+}
+
+function cleanupDictation() {
+    if (recogBtn) recogBtn.classList.remove('recording');
+    recog = null; recogBtn = null; recogTarget = null; recogBase = '';
 }
 
 /* ----------------------------- עזר ----------------------------- */

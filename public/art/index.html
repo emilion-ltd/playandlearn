@@ -163,8 +163,8 @@
 
                     <!-- שלב 2: טקסט -->
                     <div class="kid-step">
-                        <div class="kid-label">2️⃣ מה הדמות אומרת?</div>
-                        <textarea id="studio-text" rows="3" placeholder="כתבו כאן מה הדמות תגיד...">שלום! אני הדמות שציירתם. כיף לדבר איתכם!</textarea>
+                        <div class="kid-label">2️⃣ מה הדמות אומרת? <button id="studio-mic" class="mic-btn" title="לחצו ודברו — הטקסט ייכתב לבד">🎤</button></div>
+                        <textarea id="studio-text" rows="3" placeholder="כתבו כאן, או לחצו על המיקרופון ודברו 🎤">שלום! אני הדמות שציירתם. כיף לדבר איתכם!</textarea>
                     </div>
 
                     <!-- שלב 3: קדימה -->
@@ -188,7 +188,10 @@
                             <button id="dlg-mark-1" class="primary-btn">👄 פה דמות 1</button>
                             <button id="dlg-mark-2" class="primary-btn">👄 פה דמות 2</button>
                         </div>
-                        <textarea id="dlg-text" rows="2" placeholder="מה אומרים עכשיו?"></textarea>
+                        <div class="dlg-input-row">
+                            <textarea id="dlg-text" rows="2" placeholder="מה אומרים עכשיו? (אפשר גם בקול 🎤)"></textarea>
+                            <button id="dlg-mic" class="mic-btn" title="לחצו ודברו — הטקסט ייכתב לבד">🎤</button>
+                        </div>
                         <div class="tool-row">
                             <button id="dlg-add-1" class="primary-btn">➕ דמות 1 אומרת</button>
                             <button id="dlg-add-2" class="primary-btn">➕ דמות 2 אומרת</button>
