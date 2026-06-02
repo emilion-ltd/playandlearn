@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { Button } from '../components/common/UI';
 import { theme } from '../theme';
+import { usePlayers } from '../context/PlayersContext';
 
 const Head = styled.div`
   text-align: center;
@@ -21,7 +22,16 @@ const Frame = styled.iframe`
 `;
 
 export default function ArtScreen() {
-  const src = `${process.env.PUBLIC_URL}/art/index.html`;
+  const { currentPlayer } = usePlayers();
+  const name = currentPlayer?.name || '';
+  const emoji = currentPlayer?.emoji || '';
+
+  // מעבירים את שם השחקן מהפלטפורמה אל המשחק המוטמע, כדי שלא תהיה כפילות שחקנים
+  const params = new URLSearchParams();
+  if (name) params.set('player', name);
+  if (emoji) params.set('emoji', emoji);
+  const qs = params.toString();
+  const src = `${process.env.PUBLIC_URL}/art/index.html${qs ? `?${qs}` : ''}`;
 
   return (
     <div>
@@ -29,7 +39,8 @@ export default function ArtScreen() {
         <h2>🎨 עולם הציורים</h2>
         <p>ציירו, צבעו, הוסיפו מדבקות - ואפילו הפכו את הציור לדמות מדברת!</p>
       </Head>
-      <Frame src={src} title="עולם הציורים" allow="microphone" />
+      {/* key לפי השם — אם מתחלף שחקן, ה-iframe נטען מחדש עם השם החדש */}
+      <Frame key={name} src={src} title="עולם הציורים" allow="microphone" />
       <div style={{ textAlign: 'center', marginTop: '0.8rem' }}>
         <Button
           $small

@@ -485,25 +485,49 @@ function updateScore(value) {
 }
 
 /* ----------------------------- שחקנים ----------------------------- */
+// שם שחקן שמגיע מהפלטפורמה (כשהמשחק מוטמע ב-iframe) — מונע כפילות שחקנים
+function getExternalPlayer() {
+    try {
+        const sp = new URLSearchParams(window.location.search);
+        const p = sp.get('player');
+        return p ? p.trim() : '';
+    } catch (e) { return ''; }
+}
+
 function initPlayer() {
-    document.getElementById('save-player').onclick = () => {
-        const input = document.getElementById('player-name');
-        const name = input.value.trim();
-        if (!name) return;
-        if (!state.players[name]) state.players[name] = { highScore: 0, savedDrawings: [] };
-        state.currentPlayer = name;
-        localStorage.setItem('currentPlayer', name);
+    const external = getExternalPlayer();
+    try { state.externalEmoji = new URLSearchParams(window.location.search).get('emoji') || ''; } catch (e) { state.externalEmoji = ''; }
+    if (external) {
+        // משתמשים בשם מהפלטפורמה ומסתירים את טופס ההתחברות הכפול
+        if (!state.players[external]) state.players[external] = { highScore: 0, savedDrawings: [] };
+        state.currentPlayer = external;
+        localStorage.setItem('currentPlayer', external);
         persistPlayers();
-        input.value = '';
-        renderPlayer();
-    };
+        const input = document.getElementById('player-name');
+        const btn = document.getElementById('save-player');
+        if (input) input.style.display = 'none';
+        if (btn) btn.style.display = 'none';
+    } else {
+        document.getElementById('save-player').onclick = () => {
+            const input = document.getElementById('player-name');
+            const name = input.value.trim();
+            if (!name) return;
+            if (!state.players[name]) state.players[name] = { highScore: 0, savedDrawings: [] };
+            state.currentPlayer = name;
+            localStorage.setItem('currentPlayer', name);
+            persistPlayers();
+            input.value = '';
+            renderPlayer();
+        };
+    }
     renderPlayer();
 }
 
 function renderPlayer() {
     const info = document.getElementById('player-info');
     if (state.currentPlayer) {
-        info.innerHTML = `<p>שלום, <strong>${escapeHtml(state.currentPlayer)}</strong> 👋</p>`;
+        const face = state.externalEmoji || '👋';
+        info.innerHTML = `<p>שלום, <strong>${escapeHtml(state.currentPlayer)}</strong> ${escapeHtml(face)}</p>`;
         state.highScore = state.players[state.currentPlayer].highScore || state.highScore;
         updateScore(state.score);
         renderGallery();
