@@ -174,8 +174,18 @@
                         <button id="studio-export-all" class="big-btn accent-btn">🎬 צור סרטון</button>
                     </div>
 
+                    <!-- נגן תצוגה מקדימה של הסרטון בתוך האתר -->
+                    <div id="studio-preview" class="studio-preview hidden">
+                        <div class="kid-label">🎬 הסרטון שלי</div>
+                        <video id="studio-preview-video" class="studio-preview-video" controls playsinline></video>
+                        <div class="tool-row">
+                            <button id="studio-preview-replay" class="primary-btn">🔁 נגן שוב</button>
+                            <button id="studio-preview-download" class="primary-btn">⬇️ הורד</button>
+                            <button id="studio-preview-share" class="big-btn accent-btn">📤 שתף</button>
+                        </div>
+                    </div>
+
                     <div id="studio-share-row" class="tool-row hidden">
-                        <button id="studio-share" class="primary-btn">📤 שתף סרטון</button>
                         <button id="studio-share-shot" class="primary-btn">📸 שתף תמונה</button>
                     </div>
                     <div id="studio-status" class="studio-status"></div>

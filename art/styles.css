@@ -440,6 +440,31 @@ input[type="range"] { width: 100%; }
 }
 .studio-status { margin-top: 10px; font-size: 0.85rem; min-height: 20px; color: var(--accent-color); font-weight: 700; }
 
+/* נגן תצוגה מקדימה של הסרטון בתוך האתר */
+.studio-preview {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #eef3ff, #fdeffb);
+    border: 2px solid rgba(99, 102, 241, 0.25);
+    box-shadow: 0 8px 22px rgba(60, 60, 120, 0.12);
+    animation: previewPop 0.35s ease;
+}
+@keyframes previewPop {
+    from { transform: scale(0.96); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+.studio-preview .kid-label { margin-bottom: 8px; }
+.studio-preview-video {
+    width: 100%;
+    max-height: 320px;
+    border-radius: 14px;
+    background: #000;
+    display: block;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+.studio-preview .tool-row { margin-top: 10px; }
+
 /* כלי כללי להסתרה */
 .hidden { display: none !important; }
 
