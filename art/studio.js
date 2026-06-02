@@ -970,8 +970,12 @@ async function exportScenes(list) {
     studio.exporting = false;
     try { studio.analyser.disconnect(dest); } catch (e) { /* ignore */ }
     await finalizeVideo(pick);
-    if (mode === 'synth') setStudioStatus('✅ הסרטון מוכן עם קול דמות! לקול בעברית אמיתי — הגדירו קול פרימיום ⚙️');
-    else setStudioStatus('✅ הסרטון מוכן — עם קול! אפשר לשתף 📤');
+    const voiceNote = mode === 'synth' ? ' (קול דמות — לעברית אמיתית הגדירו קול פרימיום ⚙️)' : '';
+    if (studio.lastVideoExt === 'mp4') {
+        setStudioStatus('✅ הסרטון מוכן כ-MP4 עם קול! אפשר לשתף 📤' + voiceNote);
+    } else {
+        setStudioStatus('✅ הסרטון מוכן (WEBM) עם קול. אם אין קול בנגן של Windows — שתפו לנייד/וואטסאפ או נגנו בכרום 🎬' + voiceNote);
+    }
     loadSceneIntoStudio(studio.sceneIndex, false);
 }
 
@@ -1348,13 +1352,19 @@ async function ensureFfmpeg() {
     // טעינת הספרייה מ-CDN רק כשצריך
     if (!window.FFmpegWASM) {
         await loadScript('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js');
+    }
+    if (!window.FFmpegUtil) {
         await loadScript('https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js');
     }
     const { FFmpeg } = window.FFmpegWASM;
+    const { toBlobURL } = window.FFmpegUtil;
+    // ליבת single-thread (לא דורשת cross-origin isolation). טוענים כ-blob מאותו
+    // מקור כדי שה-Worker יוכל לייבא אותם גם ב-GitHub Pages / דומיין מותאם.
+    const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
     const ff = new FFmpeg();
     await ff.load({
-        coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
-        wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
+        coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
     });
     ffmpegInstance = ff;
     return ff;
