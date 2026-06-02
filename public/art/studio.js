@@ -85,8 +85,15 @@ function initStudio() {
     document.getElementById('studio-add-file').onclick = () => document.getElementById('studio-file-input').click();
     document.getElementById('studio-file-input').onchange = onStudioFilePicked;
     document.getElementById('studio-export-all').onclick = exportAllScenes;
-    document.getElementById('studio-share').onclick = shareVideo;
     document.getElementById('studio-share-shot').onclick = shareSnapshot;
+
+    // נגן תצוגה מקדימה של הסרטון בתוך האתר
+    const pvReplay = document.getElementById('studio-preview-replay');
+    const pvDown = document.getElementById('studio-preview-download');
+    const pvShare = document.getElementById('studio-preview-share');
+    if (pvReplay) pvReplay.onclick = () => { const v = document.getElementById('studio-preview-video'); if (v) { v.currentTime = 0; v.play().catch(() => {}); } };
+    if (pvDown) pvDown.onclick = saveVideo;
+    if (pvShare) pvShare.onclick = shareVideo;
 
     // הכתבה קולית (דיבור → טקסט)
     const micBtn = document.getElementById('studio-mic');
@@ -997,9 +1004,9 @@ async function exportViaMux(list) {
     // 4) מיזוג ל-MP4 (אודיו AAC)
     setStudioStatus('🎞️ ממזג וידאו וקול ל-MP4... (טעינה ראשונה עשויה לקחת רגע)');
     const mp4 = await muxToMp4(videoBlob, wavBlob);
-    downloadVideoBlob(mp4, 'mp4');
+    showVideoPreview(mp4, 'mp4');
     const voiceNote = mode === 'synth' ? ' (קול דמות — לעברית אמיתית הגדירו קול פרימיום ⚙️)' : '';
-    setStudioStatus('✅ הסרטון מוכן כ-MP4 עם קול! אפשר לשתף 📤' + voiceNote);
+    setStudioStatus('✅ הסרטון מוכן! צפו בו למטה ואז הורידו או שתפו 🎬' + voiceNote);
 }
 
 // מחזיר AudioBuffer לסצנה (פרימיום/מוקלט/סינתטי) או null אם אין טקסט
@@ -1280,7 +1287,35 @@ async function finalizeVideo(pick) {
         const mp4 = await convertToMp4(blob);
         if (mp4 && mp4.type === 'video/mp4') { blob = mp4; ext = 'mp4'; }
     }
-    downloadVideoBlob(blob, ext);
+    showVideoPreview(blob, ext);
+}
+
+// מציג נגן תצוגה מקדימה של הסרטון בתוך האתר (במקום הורדה אוטומטית)
+function showVideoPreview(blob, ext) {
+    studio.lastVideoBlob = blob;
+    studio.lastVideoExt = ext || (blob.type.includes('mp4') ? 'mp4' : 'webm');
+    const wrap = document.getElementById('studio-preview');
+    const vid = document.getElementById('studio-preview-video');
+    if (vid) {
+        if (studio.lastPreviewUrl) { try { URL.revokeObjectURL(studio.lastPreviewUrl); } catch (e) { /* ignore */ } }
+        studio.lastPreviewUrl = URL.createObjectURL(blob);
+        vid.src = studio.lastPreviewUrl;
+        vid.load();
+        vid.play().catch(() => { /* דורש מגע משתמש — ינוגן בלחיצה */ });
+    }
+    if (wrap) {
+        wrap.classList.remove('hidden');
+        try { wrap.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* ignore */ }
+    }
+    const row = document.getElementById('studio-share-row');
+    if (row) row.classList.remove('hidden');
+}
+
+// שמירת הסרטון למכשיר (בלחיצה ידנית מתוך התצוגה המקדימה)
+function saveVideo() {
+    if (!studio.lastVideoBlob) { setStudioStatus('קודם צרו סרטון (🎬)'); return; }
+    downloadVideoBlob(studio.lastVideoBlob, studio.lastVideoExt);
+    setStudioStatus('⬇️ הסרטון נשמר למכשיר');
 }
 
 function downloadVideoBlob(blob, ext) {
@@ -1292,8 +1327,6 @@ function downloadVideoBlob(blob, ext) {
     a.download = `דמות-מדברת-${Date.now()}.${studio.lastVideoExt}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    const row = document.getElementById('studio-share-row');
-    if (row) row.classList.remove('hidden');
 }
 
 async function shareVideo() {
