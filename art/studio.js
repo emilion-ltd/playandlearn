@@ -14,6 +14,8 @@ const studio = {
     mouth: null,            // {x,y,w,h}
     eyes: null,             // {x,y,w,h}
     marking: null,          // 'mouth' | 'eyes' | null
+    editMode: true,         // הצגת ידיות כיוונון + גרירה/שינוי-גודל
+    drag: null,             // { region, mode, startX, startY, orig }
     dragStart: null,
     raf: null,
     openness: 0,            // 0..1 פתיחת פה (תאימות לאחור)
@@ -59,6 +61,8 @@ function initStudio() {
     document.getElementById('studio-detect').onclick = () => autoDetectFace(true);
     document.getElementById('studio-mark-mouth').onclick = () => startMarking('mouth');
     document.getElementById('studio-mark-eyes').onclick = () => startMarking('eyes');
+    const adjBtn = document.getElementById('studio-adjust');
+    if (adjBtn) adjBtn.onclick = toggleEditMode;
     document.getElementById('studio-play').onclick = playTalk;
     document.getElementById('studio-record-voice').onclick = toggleRecordVoice;
     document.getElementById('studio-export').onclick = exportVideo;
@@ -163,7 +167,7 @@ async function loadSceneIntoStudio(i, autodetect) {
         studio.eyes = scene.eyes || null;
     } else {
         studio.mouth = { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
-        studio.eyes = null;
+        studio.eyes = { x: studio.canvas.width * 0.3, y: studio.canvas.height * 0.32, w: studio.canvas.width * 0.4, h: studio.canvas.height * 0.12 };
         if (autodetect !== false) autoDetectFace(false);
     }
     // ערכי הטקסט/קול
@@ -277,7 +281,39 @@ function closeStudio() {
 /* ----------------------------- סימון אזורים ----------------------------- */
 function startMarking(what) {
     studio.marking = what;
-    setStudioStatus(what === 'mouth' ? 'גרור על הפה של הדמות' : 'גרור על העיניים');
+    studio.editMode = true;
+    setStudioStatus(what === 'mouth' ? 'גררו על הפה של הדמות' : 'גררו על העיניים');
+}
+
+function toggleEditMode() {
+    studio.editMode = !studio.editMode;
+    setStudioStatus(studio.editMode ? '✋ גררו את הריבועים להזזה, את הפינות לשינוי גודל' : 'הכיוונון הוסתר');
+}
+
+// גודל ידית האחיזה בפינה (בקואורדינטות הקנבס)
+function handleSize() { return Math.max(12, studio.canvas.width * 0.05); }
+
+// בדיקה על איזה אזור/ידית לחצו
+function hitTest(p) {
+    const hs = handleSize();
+    const regions = [['mouth', studio.mouth], ['eyes', studio.eyes]];
+    for (const [name, r] of regions) {
+        if (!r) continue;
+        const corners = {
+            nw: { x: r.x, y: r.y }, ne: { x: r.x + r.w, y: r.y },
+            sw: { x: r.x, y: r.y + r.h }, se: { x: r.x + r.w, y: r.y + r.h },
+        };
+        for (const mode in corners) {
+            const cpt = corners[mode];
+            if (Math.abs(p.x - cpt.x) <= hs && Math.abs(p.y - cpt.y) <= hs) return { region: name, mode };
+        }
+    }
+    // גוף הריבוע = הזזה
+    for (const [name, r] of regions) {
+        if (!r) continue;
+        if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) return { region: name, mode: 'move' };
+    }
+    return null;
 }
 
 function bindStudioPointer() {
@@ -287,16 +323,39 @@ function bindStudioPointer() {
         const src = (e.touches && e.touches[0]) ? e.touches[0] : e;
         return { x: (src.clientX - r.left) * (c.width / r.width), y: (src.clientY - r.top) * (c.height / r.height) };
     };
-    const down = (e) => { if (!studio.marking) return; e.preventDefault(); studio.dragStart = pos(e); };
-    const move = (e) => {
-        if (!studio.marking || !studio.dragStart) return;
-        e.preventDefault();
+    const down = (e) => {
         const p = pos(e);
-        const rect = normRect(studio.dragStart, p);
-        if (studio.marking === 'mouth') studio.mouth = rect; else studio.eyes = rect;
+        // מצב ציור ריבוע חדש (פה/עיניים)
+        if (studio.marking) { e.preventDefault(); studio.dragStart = p; return; }
+        // מצב כיוונון: הזזה/שינוי-גודל של ריבוע קיים
+        if (studio.editMode) {
+            const hit = hitTest(p);
+            if (hit) {
+                e.preventDefault();
+                const orig = hit.region === 'mouth' ? studio.mouth : studio.eyes;
+                studio.drag = { region: hit.region, mode: hit.mode, startX: p.x, startY: p.y, orig: { ...orig } };
+            }
+        }
+    };
+    const move = (e) => {
+        const p = pos(e);
+        if (studio.marking && studio.dragStart) {
+            e.preventDefault();
+            const rect = normRect(studio.dragStart, p);
+            if (studio.marking === 'mouth') studio.mouth = rect; else studio.eyes = rect;
+            return;
+        }
+        if (studio.drag) {
+            e.preventDefault();
+            applyDrag(p);
+        }
     };
     const up = () => {
-        if (studio.marking && studio.dragStart) { studio.marking = null; studio.dragStart = null; setStudioStatus('סומן! אפשר לנגן ▶️'); }
+        if (studio.marking && studio.dragStart) {
+            studio.marking = null; studio.dragStart = null;
+            setStudioStatus('✅ סומן! אפשר לגרור לכיוונון או לנגן ▶️');
+        }
+        if (studio.drag) { studio.drag = null; saveActiveToScene(); }
     };
     c.addEventListener('mousedown', down);
     c.addEventListener('mousemove', move);
@@ -304,6 +363,26 @@ function bindStudioPointer() {
     c.addEventListener('touchstart', down, { passive: false });
     c.addEventListener('touchmove', move, { passive: false });
     c.addEventListener('touchend', up);
+}
+
+function applyDrag(p) {
+    const d = studio.drag;
+    const o = d.orig;
+    const dx = p.x - d.startX, dy = p.y - d.startY;
+    const MIN = 8;
+    let r = { ...o };
+    if (d.mode === 'move') {
+        r.x = o.x + dx; r.y = o.y + dy;
+    } else {
+        let left = o.x, top = o.y, right = o.x + o.w, bottom = o.y + o.h;
+        if (d.mode === 'nw') { left = o.x + dx; top = o.y + dy; }
+        if (d.mode === 'ne') { right = o.x + o.w + dx; top = o.y + dy; }
+        if (d.mode === 'sw') { left = o.x + dx; bottom = o.y + o.h + dy; }
+        if (d.mode === 'se') { right = o.x + o.w + dx; bottom = o.y + o.h + dy; }
+        r.x = Math.min(left, right); r.y = Math.min(top, bottom);
+        r.w = Math.max(MIN, Math.abs(right - left)); r.h = Math.max(MIN, Math.abs(bottom - top));
+    }
+    if (d.region === 'mouth') studio.mouth = r; else studio.eyes = r;
 }
 
 function normRect(a, b) {
@@ -456,9 +535,10 @@ function renderFrame(elapsed) {
 
     ctx.clearRect(0, 0, c.width, c.height);
 
-    // נדנוד ראש עדין
-    const bob = Math.sin(elapsed / 600) * 3 + s.open * 2;
-    const tilt = Math.sin(elapsed / 1300) * 0.02;
+    // בזמן כיוונון מבטלים נדנוד כדי שהריבועים יתאימו למיקום הציור
+    const editing = studio.editMode && !studio.exporting;
+    const bob = editing ? 0 : Math.sin(elapsed / 600) * 3 + s.open * 2;
+    const tilt = editing ? 0 : Math.sin(elapsed / 1300) * 0.02;
 
     ctx.save();
     ctx.translate(c.width / 2, c.height / 2);
@@ -468,7 +548,35 @@ function renderFrame(elapsed) {
 
     if (studio.mouth) drawMouth(ctx, studio.mouth, s);
     if (studio.eyes && studio.blink > 0) drawBlink(ctx, studio.eyes);
+    if (editing) drawEditHandles(ctx);
     ctx.restore();
+}
+
+// ציור ריבועי כיוונון עם ידיות פינה (רק במצב עריכה, לא בייצוא)
+function drawEditHandles(ctx) {
+    const hs = handleSize();
+    const draw = (r, color, label) => {
+        if (!r) return;
+        ctx.save();
+        ctx.lineWidth = Math.max(2, studio.canvas.width * 0.006);
+        ctx.strokeStyle = color;
+        ctx.setLineDash([8, 5]);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        ctx.setLineDash([]);
+        ctx.fillStyle = color;
+        [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]].forEach(([hx, hy]) => {
+            ctx.beginPath();
+            ctx.arc(hx, hy, hs * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.font = `bold ${Math.max(11, hs)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(label, r.x + r.w / 2, r.y - hs * 0.4);
+        ctx.restore();
+    };
+    draw(studio.mouth, 'rgba(255,70,70,0.95)', '👄');
+    draw(studio.eyes, 'rgba(70,140,255,0.95)', '👀');
 }
 
 /* ציור פה לפי צורת הברה: open=פתיחה אנכית, wide=רוחב, round=עיגול,
@@ -755,19 +863,16 @@ async function exportScenes(list) {
     studio.exporting = true;
     setStudioStatus('🎬 מתחיל ליצור סרטון...');
 
-    // ערוץ אודיו להקלטה (קול פרימיום/מוקלט נכנס לקובץ)
-    let dest = null;
-    const useRealAudio = elConfigured() || !!studio.recordedBlob;
-    if (useRealAudio) {
-        ensureAudioCtx();
-        dest = studio.audioCtx.createMediaStreamDestination();
-        studio.analyser.connect(dest);
-        studio.analyser.connect(studio.audioCtx.destination);
-    }
+    // ערוץ אודיו להקלטה — תמיד מצרפים קול לקובץ:
+    // קול פרימיום (ElevenLabs) > קול מוקלט > קול דמות סינתטי (תמיד עובד)
+    const mode = elConfigured() ? 'el' : (studio.recordedBlob ? 'rec' : 'synth');
+    ensureAudioCtx();
+    const dest = studio.audioCtx.createMediaStreamDestination();
+    studio.analyser.connect(dest);
+    studio.analyser.connect(studio.audioCtx.destination);
 
     const videoStream = studio.canvas.captureStream(30);
-    let tracks = [...videoStream.getVideoTracks()];
-    if (dest) tracks = tracks.concat(dest.stream.getAudioTracks());
+    const tracks = [...videoStream.getVideoTracks(), ...dest.stream.getAudioTracks()];
     const mixed = new MediaStream(tracks);
 
     const pick = pickVideoMime();
@@ -784,76 +889,95 @@ async function exportScenes(list) {
         studio.mouth = scene.mouth || { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
         studio.eyes = scene.eyes || null;
         await sleepFrames(450);
-        if (useRealAudio) {
-            await playSceneRealAudio(scene);    // קול פרימיום — נכנס לקובץ
-        } else {
-            await speakSceneForExport(scene);   // קול דפדפן — נשמע אך לא נכנס לקובץ
-        }
+        await playSceneAudio(scene, mode);   // הקול נכנס לקובץ + מסנכרן את הפה
         await sleepFrames(350);
     }
 
     recorder.stop();
     await done;
     studio.exporting = false;
+    try { studio.analyser.disconnect(dest); } catch (e) { /* ignore */ }
     await finalizeVideo(pick);
-    if (useRealAudio) setStudioStatus('✅ הסרטון מוכן — עם קול! אפשר לשתף 📤');
-    else setStudioStatus('✅ הסרטון מוכן! (לקול בתוך הקובץ — הגדירו קול פרימיום ⚙️)');
+    if (mode === 'synth') setStudioStatus('✅ הסרטון מוכן עם קול דמות! לקול בעברית אמיתי — הגדירו קול פרימיום ⚙️');
+    else setStudioStatus('✅ הסרטון מוכן — עם קול! אפשר לשתף 📤');
     loadSceneIntoStudio(studio.sceneIndex, false);
 }
 
-// משמיע אודיו אמיתי (פרימיום/מוקלט) של סצנה לתוך ההקלטה + ליפסינק; מסתיים כשהקול נגמר
-function playSceneRealAudio(scene) {
-    return new Promise(async (resolve) => {
-        const text = (scene.text || '').trim();
-        try {
-            let buf;
-            if (elConfigured()) {
-                if (!text) { resolve(); return; }
-                buf = await elFetchAudioBuffer(text);
-            } else if (studio.recordedBlob) {
-                const ab = await studio.recordedBlob.arrayBuffer();
-                buf = await studio.audioCtx.decodeAudioData(ab.slice(0));
-            } else { resolve(); return; }
-            const src = studio.audioCtx.createBufferSource();
-            src.buffer = buf;
-            src.connect(studio.analyser);
-            startAmplitudeLipSync();
-            src.onended = () => { stopAmplitudeLipSync(); src.disconnect(); resolve(); };
-            src.start();
-        } catch (err) {
-            setStudioStatus('שגיאת קול: ' + err.message + ' — ממשיך בלי קול');
-            resolve();
+// משמיע את קול הסצנה לתוך ה-analyser (שמחובר להקלטה) ומסיים כשהקול נגמר
+async function playSceneAudio(scene, mode) {
+    const text = (scene.text || '').trim();
+    try {
+        if (mode === 'el') {
+            if (!text) return;
+            const buf = await elFetchAudioBuffer(text);
+            await playBufferThroughAnalyser(buf);
+        } else if (mode === 'rec') {
+            const ab = await studio.recordedBlob.arrayBuffer();
+            const buf = await studio.audioCtx.decodeAudioData(ab.slice(0));
+            await playBufferThroughAnalyser(buf);
+        } else {
+            await synthSpeak(text, scene);
         }
+    } catch (err) {
+        setStudioStatus('שגיאת קול: ' + (err.message || '') + ' — ממשיך');
+    }
+}
+
+function playBufferThroughAnalyser(buf) {
+    return new Promise((resolve) => {
+        const src = studio.audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(studio.analyser);
+        startAmplitudeLipSync();
+        src.onended = () => { stopAmplitudeLipSync(); try { src.disconnect(); } catch (e) {} resolve(); };
+        src.start();
     });
 }
 
-// מדבר טקסט של סצנה אחת ומחזיר Promise שמסתיים בסיום הדיבור (עם גיבוי זמן)
-function speakSceneForExport(scene) {
+/* קול דמות סינתטי (gibberish חביב) — תמיד זמין ונכנס לקובץ הווידאו.
+   נבנה לפי רצף ההברות: לכל תנועה תדר אחר, עם ויברטו קל, מנותב דרך
+   ה-analyser כך שהליפסינק מתבצע אוטומטית לפי עוצמת הקול. */
+function synthSpeak(text, scene) {
     return new Promise((resolve) => {
-        const text = (scene.text || '').trim();
-        if (!text) { resolve(); return; }
-        const fallbackMs = Math.max(2500, text.length * 130);
-        let finished = false;
-        const finish = () => { if (finished) return; finished = true; stopVisemeSpeak(); resolve(); };
+        const arr = textToVisemes(text || '');
+        const ac = studio.audioCtx;
+        if (!arr.length || !ac) { resolve(); return; }
+        const step = Math.max(0.06, 0.1 / (scene.rate || 1));   // שניות לכל הברה
+        const base = scene.pitch || 1.2;
+        const gain = ac.createGain();
+        gain.gain.value = 0.0001;
+        gain.connect(studio.analyser);
+        const osc = ac.createOscillator();
+        osc.type = 'triangle';
+        const lfo = ac.createOscillator();
+        lfo.type = 'sine'; lfo.frequency.value = 6;
+        const lfoGain = ac.createGain(); lfoGain.gain.value = 7;
+        lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+        osc.connect(gain);
 
-        if (!('speechSynthesis' in window)) {
-            // ללא TTS — מנפישים פה לפי הזמן בלבד
-            startVisemeSpeak(text, scene.rate || 1);
-            setTimeout(finish, fallbackMs);
-            return;
-        }
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        const voices = window.speechSynthesis.getVoices();
-        if (scene.voiceIndex != null && voices[scene.voiceIndex]) u.voice = voices[scene.voiceIndex];
-        u.lang = (u.voice && u.voice.lang) || 'he-IL';
-        u.rate = scene.rate || 1;
-        u.pitch = scene.pitch || 1.2;
-        u.onstart = () => startVisemeSpeak(text, u.rate);
-        u.onboundary = (e) => resyncVisemes(e.charIndex);
-        u.onend = finish;
-        window.speechSynthesis.speak(u);
-        setTimeout(finish, fallbackMs + 1500);   // גיבוי אם onend לא נורה
+        const freqFor = (v) => ({ AA: 230, EE: 300, OO: 200, UU: 190, FF: 260, CONS: 250, PP: 0, SIL: 0 }[v] || 250) * base;
+        let t = ac.currentTime + 0.03;
+        arr.forEach((v) => {
+            const f = freqFor(v);
+            if (f > 0) {
+                osc.frequency.setValueAtTime(f, t);
+                gain.gain.setValueAtTime(0.0001, t);
+                gain.gain.exponentialRampToValueAtTime(0.3, t + step * 0.3);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t + step * 0.92);
+            }
+            t += step;
+        });
+        const stopAt = t + 0.05;
+        startAmplitudeLipSync();
+        osc.start();
+        lfo.start();
+        osc.stop(stopAt);
+        lfo.stop(stopAt);
+        osc.onended = () => {
+            stopAmplitudeLipSync();
+            try { gain.disconnect(); } catch (e) {}
+            resolve();
+        };
     });
 }
 

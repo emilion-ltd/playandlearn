@@ -449,10 +449,14 @@ input[type="range"] { width: 100%; }
 .big-btn {
     width: 100%; font-size: 1.15rem; font-weight: 900; padding: 14px;
     border: none; border-radius: 14px; cursor: pointer; margin-bottom: 8px;
-    background: var(--primary-color, #1473E6); color: #fff;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.18); transition: transform 0.12s;
+    background: linear-gradient(135deg, #1f8bff, #0d5bc4); color: #fff;
+    box-shadow: 0 4px 14px rgba(20, 115, 230, 0.35); transition: transform 0.12s;
 }
-.big-btn:hover { transform: translateY(-2px); filter: brightness(1.05); }
+.big-btn.accent-btn {
+    background: linear-gradient(135deg, #FF6B9D, #C44CE0); color: #fff;
+    box-shadow: 0 4px 14px rgba(196, 76, 224, 0.35);
+}
+.big-btn:hover { transform: translateY(-2px); filter: brightness(1.08); }
 .big-btn:active { transform: translateY(0); }
 .link-btn {
     background: none; border: none; color: var(--accent-color); cursor: pointer;
