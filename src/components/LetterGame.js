@@ -27,14 +27,12 @@ const ImageContainer = styled(motion.div)`
   width: 200px;
   height: 200px;
   border-radius: 15px;
-  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 7rem;
+  background: linear-gradient(135deg, #f5f7fa, #e9eefb);
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-  
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
 `;
 
 const FeedbackMessage = styled(motion.div)`
@@ -128,17 +126,14 @@ function LetterGame() {
       </Word>
 
       <ImageContainer
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        key={letters[currentIndex]?.letter}
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4 }}
+        role="img"
+        aria-label={letters[currentIndex]?.word}
       >
-        <img 
-          src={`${process.env.PUBLIC_URL}/assets/images/${letters[currentIndex]?.image}`} 
-          alt={letters[currentIndex]?.word}
-          onError={(e) => {
-            e.target.src = `${process.env.PUBLIC_URL}/assets/images/placeholder.png`;
-          }}
-        />
+        {letters[currentIndex]?.emoji}
       </ImageContainer>
 
       <AnimatePresence>
