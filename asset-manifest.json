@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/playandlearn/static/css/main.e6c13ad2.css",
+    "main.js": "/playandlearn/static/js/main.e2edbde4.js",
+    "index.html": "/playandlearn/index.html",
+    "main.e6c13ad2.css.map": "/playandlearn/static/css/main.e6c13ad2.css.map",
+    "main.e2edbde4.js.map": "/playandlearn/static/js/main.e2edbde4.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.e6c13ad2.css",
+    "static/js/main.e2edbde4.js"
+  ]
+}
