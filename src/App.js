@@ -15,6 +15,9 @@ import ReadingHomeScreen from './screens/reading/ReadingHomeScreen';
 import CharacterSelectScreen from './screens/reading/CharacterSelectScreen';
 import StageSelectScreen from './screens/reading/StageSelectScreen';
 import ReadingGameScreen from './screens/reading/ReadingGameScreen';
+import MathScreen from './screens/MathScreen';
+import EnglishScreen from './screens/EnglishScreen';
+import ScienceScreen from './screens/ScienceScreen';
 
 const GlobalStyle = createGlobalStyle`
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -100,6 +103,12 @@ function renderScreen(current) {
       return <StageSelectScreen character={params.character} />;
     case 'reading-game':
       return <ReadingGameScreen character={params.character} stage={params.stage} />;
+    case 'math':
+      return <MathScreen grade={params.grade} />;
+    case 'english':
+      return <EnglishScreen />;
+    case 'science':
+      return <ScienceScreen />;
     default:
       return <HomeScreen />;
   }

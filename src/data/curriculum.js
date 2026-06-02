@@ -37,8 +37,8 @@ export const subjects = [
     title: 'חשבון וחשיבה',
     emoji: '🔢',
     color: '#51cf66',
-    description: 'חיבור, חיסור ומשחקי מספרים',
-    comingSoon: true,
+    description: 'חיבור, חיסור, כפל וחילוק - לפי רמות',
+    screen: 'math',
     grades: ['א', 'ב', 'ג', 'ד', 'ה', 'ו'],
   },
   {
@@ -46,8 +46,8 @@ export const subjects = [
     title: 'אנגלית',
     emoji: '🇬🇧',
     color: '#22b8cf',
-    description: 'מילים, אותיות ומשחקי שפה באנגלית',
-    comingSoon: true,
+    description: 'אוצר מילים באנגלית לפי קטגוריות',
+    screen: 'english',
     grades: ['ג', 'ד', 'ה', 'ו'],
   },
   {
@@ -55,8 +55,8 @@ export const subjects = [
     title: 'מדע וטבע',
     emoji: '🔬',
     color: '#845ef7',
-    description: 'גילויים, ניסויים והרפתקאות בעולם המדע',
-    comingSoon: true,
+    description: 'טריוויה מרתקת על חיות, גוף האדם, חלל וטבע',
+    screen: 'science',
     grades: ['ג', 'ד', 'ה', 'ו'],
   },
   {
