@@ -57,7 +57,9 @@ const studio = {
 
 const EL_KEY_LS = 'studio-el-key';
 const EL_VOICE_LS = 'studio-el-voice';
-const EL_MODEL = 'eleven_multilingual_v2';
+// eleven_v3 הוא המודל היחיד של ElevenLabs שתומך בעברית (וגם הכי אקספרסיבי).
+// multilingual_v2 / flash / turbo *לא* תומכים עברית — ומחזירים ג'יבריש.
+const EL_MODEL = 'eleven_v3';
 const OA_KEY_LS = 'studio-oa-key';
 const OA_VOICE_LS = 'studio-oa-voice';
 const OA_MODEL = 'gpt-4o-mini-tts';
@@ -1407,7 +1409,7 @@ async function elFetchAudioBuffer(text) {
         body: JSON.stringify({
             text,
             model_id: EL_MODEL,
-            voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true },
+            voice_settings: { stability: 0.5, similarity_boost: 0.75, use_speaker_boost: true },
         }),
     });
     if (!resp.ok) {
