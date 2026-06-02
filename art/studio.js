@@ -1005,6 +1005,7 @@ async function exportViaMux(list) {
     // 3) בניית קובץ WAV מכל הקטעים + שתיקות בין סצנות
     const wavBlob = buildWavFromSegments(segs, sr);
     const videoBlob = new Blob(studio.videoChunks, { type: 'video/webm' });
+    if (videoBlob.size === 0) throw new Error('לא הוקלט וידאו (MediaRecorder לא תומך?)');
 
     // 4) מיזוג ל-MP4 (אודיו AAC)
     setStudioStatus('🎞️ ממזג וידאו וקול ל-MP4... (טעינה ראשונה עשויה לקחת רגע)');
@@ -1020,7 +1021,14 @@ async function getSceneAudioBuffer(scene, mode, sr) {
     try {
         if (mode === 'premium') {
             if (!text) return null;
-            return await premiumFetchBuffer(text);
+            try {
+                return await premiumFetchBuffer(text);
+            } catch (e) {
+                // אם הקול הפרימיום נכשל (מפתח/הרשאה/רשת) — לא מפילים את הסרטון,
+                // אלא נופלים לקול הדמות הסינתטי כך שתמיד יהיה אודיו.
+                setStudioStatus('⚠️ קול פרימיום נכשל — משתמש בקול דמות. ' + (e.message || ''));
+                return await renderSynthBuffer(text, scene, sr);
+            }
         }
         if (mode === 'rec') {
             const ab = await studio.recordedBlob.arrayBuffer();
@@ -1131,11 +1139,16 @@ function pickVideoOnlyMime() {
 }
 
 async function muxToMp4(videoBlob, wavBlob) {
+    if (!videoBlob || videoBlob.size === 0) throw new Error('אין וידאו להמרה');
     const ff = await ensureFfmpeg();
     await ff.writeFile('v.webm', new Uint8Array(await videoBlob.arrayBuffer()));
     await ff.writeFile('a.wav', new Uint8Array(await wavBlob.arrayBuffer()));
-    await ff.exec(['-i', 'v.webm', '-i', 'a.wav', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', 'out.mp4']);
+    // ff.exec מחזיר קוד יציאה (לא זורק!) — חובה לבדוק אותו ואת גודל הפלט,
+    // אחרת אפשר לקבל out.mp4 ריק ולהציג/להוריד קובץ 0 בייט בלי שום שגיאה.
+    const code = await ff.exec(['-i', 'v.webm', '-i', 'a.wav', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', 'out.mp4']);
+    if (code !== 0) throw new Error('מיזוג ffmpeg נכשל (code ' + code + ')');
     const out = await ff.readFile('out.mp4');
+    if (!out || out.length === 0) throw new Error('הפלט של ffmpeg ריק');
     return new Blob([out.buffer], { type: 'video/mp4' });
 }
 
@@ -1297,6 +1310,7 @@ async function finalizeVideo(pick) {
 
 // מציג נגן תצוגה מקדימה של הסרטון בתוך האתר (במקום הורדה אוטומטית)
 function showVideoPreview(blob, ext) {
+    if (!blob || blob.size === 0) { setStudioStatus('הסרטון יצא ריק 😕 נסו שוב, או רעננו את הדף'); return; }
     studio.lastVideoBlob = blob;
     studio.lastVideoExt = ext || (blob.type.includes('mp4') ? 'mp4' : 'webm');
     const wrap = document.getElementById('studio-preview');
