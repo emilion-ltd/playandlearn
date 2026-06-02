@@ -5,6 +5,7 @@ import { usePlayers, gameMeta } from '../context/PlayersContext';
 import { Card, Button } from '../components/common/UI';
 import Icon from '../components/common/Icon';
 import { PlayerModalRoot } from '../components/player/PlayerModal';
+import { playerKey } from '../services/onlineSync';
 import { theme } from '../theme';
 
 const Head = styled.div`
@@ -62,11 +63,48 @@ const GameCard = styled(Card)`
 
 const medals = ['🥇', '🥈', '🥉'];
 
+const OnlineStrip = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+`;
+
+const OnlineChip = styled(motion.div)`
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.8rem 0.35rem 0.55rem;
+  background: #fff;
+  border: 2px solid ${theme.colors.border};
+  border-radius: ${theme.radius.pill};
+  box-shadow: ${theme.shadow.sm};
+  font-weight: 600;
+  color: ${theme.colors.text};
+  .av { font-size: 1.3rem; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: ${theme.colors.success}; box-shadow: 0 0 0 0 ${theme.colors.success}; animation: pulse 1.6s infinite; }
+  .pts { color: ${theme.colors.textLight}; font-size: 0.85rem; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(39,174,96,0.5); }
+    70% { box-shadow: 0 0 0 8px rgba(39,174,96,0); }
+    100% { box-shadow: 0 0 0 0 rgba(39,174,96,0); }
+  }
+`;
+
 export default function RecordsScreen() {
-  const { players, leaderboard, currentPlayer } = usePlayers();
+  const {
+    players, leaderboard, currentPlayer,
+    online, onlinePlayers, globalLeaderboard, globalRecords,
+  } = usePlayers();
   const [modal, setModal] = useState(false);
 
-  if (players.length === 0) {
+  const myKey = currentPlayer ? playerKey(currentPlayer.id) : null;
+  const useGlobal = online && globalLeaderboard.length > 0;
+  const board = useGlobal ? globalLeaderboard : leaderboard;
+  const isMe = (p) => (useGlobal ? p.key === myKey : currentPlayer?.id === p.id);
+
+  const nothingYet = players.length === 0 && board.length === 0 && onlinePlayers.length === 0;
+  if (nothingYet) {
     return (
       <div>
         <Head>
@@ -81,17 +119,16 @@ export default function RecordsScreen() {
     );
   }
 
-  // מי מחזיק בשיא לכל משחק
+  // מי מחזיק בשיא לכל משחק — משלב מקומי וגלובלי
   const gameHolders = Object.keys(gameMeta).map((gid) => {
     let best = 0;
     let holder = null;
     players.forEach((p) => {
       const v = p.records?.[gid] || 0;
-      if (v > best) {
-        best = v;
-        holder = p;
-      }
+      if (v > best) { best = v; holder = { emoji: p.emoji, name: p.name }; }
     });
+    const gr = globalRecords[gid];
+    if (gr && gr.score > best) { best = gr.score; holder = { emoji: gr.emoji, name: gr.name }; }
     return { gid, best, holder };
   });
 
@@ -99,29 +136,52 @@ export default function RecordsScreen() {
     <div>
       <Head>
         <h2>🏆 אלופים ושיאים</h2>
-        <p>מי צובר הכי הרבה נקודות? תחרות בין כל השחקנים!</p>
+        <p>
+          {online && (onlinePlayers.length > 0 || globalLeaderboard.length > 0)
+            ? 'תחרות חיה בין כל השחקנים בעולם הלמידה!'
+            : 'תחרות בין השחקנים במכשיר הזה'}
+        </p>
       </Head>
 
+      {online && onlinePlayers.length > 0 && (
+        <Section>
+          <SecTitle>🟢 מחוברים עכשיו ({onlinePlayers.length})</SecTitle>
+          <OnlineStrip>
+            {onlinePlayers
+              .slice()
+              .sort((a, b) => (b.points || 0) - (a.points || 0))
+              .map((p) => (
+                <OnlineChip key={p.key} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                  <span className="dot" />
+                  <span className="av">{p.emoji}</span>
+                  <span>{p.name}{p.key === myKey ? ' (את/ה)' : ''}</span>
+                  <span className="pts">⭐{p.points || 0}</span>
+                </OnlineChip>
+              ))}
+          </OnlineStrip>
+        </Section>
+      )}
+
       <Section>
-        <SecTitle>👑 טבלת אלופים</SecTitle>
-        {leaderboard.map((p, i) => (
+        <SecTitle>👑 טבלת אלופים {useGlobal ? '(עולמי)' : ''}</SecTitle>
+        {board.map((p, i) => (
           <Row
-            key={p.id}
-            $me={currentPlayer?.id === p.id}
+            key={p.key || p.id}
+            $me={isMe(p)}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.05 }}
+            transition={{ delay: Math.min(i, 8) * 0.05 }}
           >
             <span className="rank">{medals[i] || i + 1}</span>
             <span className="av">{p.emoji}</span>
-            <span className="nm">{p.name}{currentPlayer?.id === p.id ? ' (את/ה)' : ''}</span>
+            <span className="nm">{p.name}{isMe(p) ? ' (את/ה)' : ''}</span>
             <span className="pts">⭐ {p.points || 0}</span>
           </Row>
         ))}
       </Section>
 
       <Section>
-        <SecTitle>🎯 שיאים לפי משחק</SecTitle>
+        <SecTitle>🎯 שיאים לפי משחק {Object.keys(globalRecords).length > 0 ? '(עולמי)' : ''}</SecTitle>
         <GameGrid>
           {gameHolders.map(({ gid, best, holder }) => (
             <GameCard key={gid}>

@@ -1,4 +1,13 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+  firebaseEnabled,
+  publishPresence,
+  touchPresence,
+  clearPresence,
+  publishPlayer,
+  subscribeOnline,
+  subscribePlayers,
+} from '../services/onlineSync';
 
 const PlayersContext = createContext(null);
 const STORAGE_KEY = 'learn-he-players-v2';
@@ -34,6 +43,9 @@ function newId() {
 export function PlayersProvider({ children }) {
   const [state, setState] = useState(load);
   const [celebration, setCelebration] = useState(null);
+  const [onlinePlayers, setOnlinePlayers] = useState([]);
+  const [remotePlayers, setRemotePlayers] = useState([]);
+  const globalRecordsRef = useRef({});
 
   useEffect(() => {
     try {
@@ -42,6 +54,14 @@ export function PlayersProvider({ children }) {
       /* ignore */
     }
   }, [state]);
+
+  // מנויים גלובליים: מי מחובר עכשיו + כל השחקנים (לטבלת אלופים ושיאים)
+  useEffect(() => {
+    if (!firebaseEnabled) return undefined;
+    const unsubOnline = subscribeOnline(setOnlinePlayers);
+    const unsubPlayers = subscribePlayers(setRemotePlayers);
+    return () => { unsubOnline(); unsubPlayers(); };
+  }, []);
 
   const addPlayer = useCallback((name, emoji) => {
     const id = newId();
@@ -66,10 +86,28 @@ export function PlayersProvider({ children }) {
 
   const currentPlayer = state.players.find((p) => p.id === state.currentId) || null;
 
-  // ניקוד הכי טוב במשחק נתון בין כל השחקנים
+  // פרסום נוכחות + נתוני שחקן ל-Firebase כשהשחקן הפעיל משתנה
+  const currentSig = currentPlayer
+    ? `${currentPlayer.id}|${currentPlayer.points}|${JSON.stringify(currentPlayer.records || {})}`
+    : '';
+  useEffect(() => {
+    if (!firebaseEnabled || !currentPlayer) return undefined;
+    publishPresence(currentPlayer);
+    publishPlayer(currentPlayer);
+    const iv = setInterval(() => touchPresence(currentPlayer), 30000);
+    const id = currentPlayer.id;
+    return () => { clearInterval(iv); clearPresence(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSig]);
+
+  // ניקוד הכי טוב במשחק נתון בין כל השחקנים (מקומי + גלובלי)
   const gameBest = useCallback(
-    (gameId) => state.players.reduce((max, p) => Math.max(max, p.records?.[gameId] || 0), 0),
-    [state.players]
+    (gameId) => {
+      const local = state.players.reduce((max, p) => Math.max(max, p.records?.[gameId] || 0), 0);
+      const remote = remotePlayers.reduce((max, p) => Math.max(max, (p.records && p.records[gameId]) || 0), 0);
+      return Math.max(local, remote);
+    },
+    [state.players, remotePlayers]
   );
 
   // הגשת תוצאה: מעדכן נקודות ושיא אישי, מחזיר מידע על שבירת שיא
@@ -81,7 +119,9 @@ export function PlayersProvider({ children }) {
       let result = { isRecord: false, isGlobalRecord: false, prevBest: 0, best: score };
       setState((s) => {
         if (!s.currentId) return s;
-        const globalPrev = s.players.reduce((m, p) => Math.max(m, p.records?.[gameId] || 0), 0);
+        const localPrev = s.players.reduce((m, p) => Math.max(m, p.records?.[gameId] || 0), 0);
+        const remotePrev = globalRecordsRef.current[gameId]?.score || 0;
+        const globalPrev = Math.max(localPrev, remotePrev);
         const players = s.players.map((p) => {
           if (p.id !== s.currentId) return p;
           const prevBest = p.records?.[gameId] || 0;
@@ -112,6 +152,29 @@ export function PlayersProvider({ children }) {
 
   const leaderboard = [...state.players].sort((a, b) => (b.points || 0) - (a.points || 0));
 
+  // טבלת אלופים גלובלית — ממוזגת בין כל השחקנים מכל המכשירים
+  const globalLeaderboard = useMemo(
+    () => [...remotePlayers].sort((a, b) => (b.points || 0) - (a.points || 0)),
+    [remotePlayers]
+  );
+
+  // שיא גלובלי לכל משחק + מי מחזיק בו
+  const globalRecords = useMemo(() => {
+    const rec = {};
+    remotePlayers.forEach((p) => {
+      const records = p.records || {};
+      Object.keys(records).forEach((gid) => {
+        const score = records[gid] || 0;
+        if (!rec[gid] || score > rec[gid].score) {
+          rec[gid] = { score, name: p.name, emoji: p.emoji, key: p.key };
+        }
+      });
+    });
+    return rec;
+  }, [remotePlayers]);
+
+  useEffect(() => { globalRecordsRef.current = globalRecords; }, [globalRecords]);
+
   const value = {
     players: state.players,
     currentPlayer,
@@ -123,6 +186,10 @@ export function PlayersProvider({ children }) {
     leaderboard,
     celebration,
     dismissCelebration,
+    online: firebaseEnabled,
+    onlinePlayers,
+    globalLeaderboard,
+    globalRecords,
   };
 
   return <PlayersContext.Provider value={value}>{children}</PlayersContext.Provider>;
