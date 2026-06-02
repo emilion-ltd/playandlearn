@@ -50,11 +50,18 @@ const studio = {
     elKey: '',
     elVoice: '',
     elCache: {},            // טקסט -> AudioBuffer (לחיסכון בקריאות חוזרות בייצוא)
+    // קולות פרימיום (OpenAI)
+    oaKey: '',
+    oaVoice: 'nova',
 };
 
 const EL_KEY_LS = 'studio-el-key';
 const EL_VOICE_LS = 'studio-el-voice';
 const EL_MODEL = 'eleven_multilingual_v2';
+const OA_KEY_LS = 'studio-oa-key';
+const OA_VOICE_LS = 'studio-oa-voice';
+const OA_MODEL = 'gpt-4o-mini-tts';
+const OA_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'];
 
 function initStudio() {
     studio.canvas = document.getElementById('studio-canvas');
@@ -107,6 +114,18 @@ function initStudio() {
     document.getElementById('el-test').onclick = testElevenVoice;
     document.getElementById('el-clear').onclick = clearElevenConfig;
     loadElevenConfig();
+
+    // קול OpenAI
+    populateOpenAiVoices();
+    document.getElementById('oa-save').onclick = saveOpenAiConfig;
+    document.getElementById('oa-test').onclick = testOpenAiVoice;
+    document.getElementById('oa-clear').onclick = clearOpenAiConfig;
+    loadOpenAiConfig();
+
+    // בחירת קול מהירה (חינם): גבר / אישה / ילד
+    document.getElementById('voice-male').onclick = () => applyVoicePreset('male');
+    document.getElementById('voice-female').onclick = () => applyVoicePreset('female');
+    document.getElementById('voice-child').onclick = () => applyVoicePreset('child');
 
     bindStudioPointer();
     bindStudioSliders();
@@ -754,7 +773,7 @@ function drawBlink(ctx, e) {
 function playTalk() {
     const text = document.getElementById('studio-text').value.trim();
     if (!text) { setStudioStatus('כתבו משפט לדמות 🙂'); return; }
-    if (elConfigured()) { playWithElevenLabs(text); return; }
+    if (premiumProvider()) { playWithPremium(text); return; }
     if (studio.recordedBlob) { playRecorded(); return; }
     if (!('speechSynthesis' in window)) { setStudioStatus('אין תמיכה בהקראה בדפדפן זה'); return; }
 
@@ -914,8 +933,8 @@ async function exportScenes(list) {
     setStudioStatus('🎬 מתחיל ליצור סרטון...');
 
     // ערוץ אודיו להקלטה — תמיד מצרפים קול לקובץ:
-    // קול פרימיום (ElevenLabs) > קול מוקלט > קול דמות סינתטי (תמיד עובד)
-    const mode = elConfigured() ? 'el' : (studio.recordedBlob ? 'rec' : 'synth');
+    // קול פרימיום (ElevenLabs/OpenAI) > קול מוקלט > קול דמות סינתטי (תמיד עובד)
+    const mode = premiumProvider() ? 'premium' : (studio.recordedBlob ? 'rec' : 'synth');
     ensureAudioCtx();
     const dest = studio.audioCtx.createMediaStreamDestination();
     studio.analyser.connect(dest);
@@ -960,9 +979,9 @@ async function exportScenes(list) {
 async function playSceneAudio(scene, mode) {
     const text = (scene.text || '').trim();
     try {
-        if (mode === 'el') {
+        if (mode === 'premium') {
             if (!text) return;
-            const buf = await elFetchAudioBuffer(text);
+            const buf = await premiumFetchBuffer(text);
             await playBufferThroughAnalyser(buf);
         } else if (mode === 'rec') {
             const ab = await studio.recordedBlob.arrayBuffer();
@@ -1160,11 +1179,11 @@ async function elFetchAudioBuffer(text) {
     return buf;
 }
 
-// משמיע טקסט בקול הפרימיום + ליפסינק לפי עוצמת הקול
-async function playWithElevenLabs(text) {
+// משמיע טקסט בקול הפרימיום (ElevenLabs/OpenAI) + ליפסינק לפי עוצמת הקול
+async function playWithPremium(text) {
     try {
         setStudioStatus('🎙️ מכין קול פרימיום...');
-        const buf = await elFetchAudioBuffer(text);
+        const buf = await premiumFetchBuffer(text);
         ensureAudioCtx();
         const src = studio.audioCtx.createBufferSource();
         src.buffer = buf;
@@ -1183,7 +1202,143 @@ async function testElevenVoice() {
     saveElevenConfig();
     if (!elConfigured()) { setStudioStatus('מלאו מפתח API ומזהה קול'); return; }
     const text = (document.getElementById('studio-text').value.trim()) || 'שלום! זה הקול החדש שלי.';
-    playWithElevenLabs(text);
+    playWithPremium(text);
+}
+
+/* ----------------------------- קול פרימיום (OpenAI) ----------------------------- */
+function premiumProvider() {
+    if (elConfigured()) return 'el';
+    if (oaConfigured()) return 'oa';
+    return null;
+}
+function oaConfigured() { return !!(studio.oaKey && studio.oaVoice); }
+
+async function premiumFetchBuffer(text) {
+    return premiumProvider() === 'oa' ? oaFetchAudioBuffer(text) : elFetchAudioBuffer(text);
+}
+
+function populateOpenAiVoices() {
+    const sel = document.getElementById('oa-voice');
+    if (!sel) return;
+    sel.innerHTML = '';
+    OA_VOICES.forEach((v) => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        sel.appendChild(o);
+    });
+}
+
+function loadOpenAiConfig() {
+    studio.oaKey = localStorage.getItem(OA_KEY_LS) || '';
+    studio.oaVoice = localStorage.getItem(OA_VOICE_LS) || 'nova';
+    const k = document.getElementById('oa-api-key');
+    const v = document.getElementById('oa-voice');
+    if (k) k.value = studio.oaKey;
+    if (v) v.value = studio.oaVoice;
+}
+
+function saveOpenAiConfig() {
+    studio.oaKey = document.getElementById('oa-api-key').value.trim();
+    studio.oaVoice = document.getElementById('oa-voice').value || 'nova';
+    localStorage.setItem(OA_KEY_LS, studio.oaKey);
+    localStorage.setItem(OA_VOICE_LS, studio.oaVoice);
+    setStudioStatus(oaConfigured() ? '✅ קול OpenAI נשמר! לחצו ▶️ או 🔊 בדוק' : 'הדביקו מפתח OpenAI');
+}
+
+function clearOpenAiConfig() {
+    studio.oaKey = '';
+    localStorage.removeItem(OA_KEY_LS);
+    document.getElementById('oa-api-key').value = '';
+    setStudioStatus('קול OpenAI נוקה');
+}
+
+// מביא אודיו מ-OpenAI ומחזיר AudioBuffer (עם מטמון)
+async function oaFetchAudioBuffer(text) {
+    const cacheKey = 'oa:' + studio.oaVoice + ':' + text;
+    if (studio.elCache[cacheKey]) return studio.elCache[cacheKey];
+    const resp = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + studio.oaKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: OA_MODEL, voice: studio.oaVoice, input: text, response_format: 'mp3' }),
+    });
+    if (!resp.ok) {
+        let msg = 'HTTP ' + resp.status;
+        try { const j = await resp.json(); msg = (j.error && j.error.message) || msg; } catch (e) { /* ignore */ }
+        throw new Error(msg);
+    }
+    const arr = await resp.arrayBuffer();
+    ensureAudioCtx();
+    const buf = await studio.audioCtx.decodeAudioData(arr);
+    studio.elCache[cacheKey] = buf;
+    return buf;
+}
+
+async function testOpenAiVoice() {
+    saveOpenAiConfig();
+    if (!oaConfigured()) { setStudioStatus('הדביקו מפתח OpenAI ובחרו קול'); return; }
+    if (elConfigured()) { setStudioStatus('שימו לב: ElevenLabs מוגדר וקודם בעדיפות. לבדיקת OpenAI נקו את ElevenLabs.'); }
+    const text = (document.getElementById('studio-text').value.trim()) || 'שלום! זה הקול החדש שלי.';
+    try {
+        setStudioStatus('🤖 מכין קול OpenAI...');
+        const buf = await oaFetchAudioBuffer(text);
+        ensureAudioCtx();
+        const src = studio.audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(studio.analyser);
+        studio.analyser.connect(studio.audioCtx.destination);
+        startAmplitudeLipSync();
+        src.onended = () => { stopAmplitudeLipSync(); setStudioStatus('סיום 🙂'); };
+        src.start();
+        setStudioStatus('🗣️ קול OpenAI...');
+    } catch (err) {
+        setStudioStatus('שגיאת OpenAI: ' + err.message);
+    }
+}
+
+/* ----------------------------- בחירת קול מהירה (דפדפן, חינם) ----------------------------- */
+function speakBrowserSample(text) {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text || 'שלום, נעים מאוד! ככה אני נשמע.');
+    const sel = document.getElementById('studio-voice');
+    const voices = window.speechSynthesis.getVoices();
+    if (voices[sel.value]) u.voice = voices[sel.value];
+    u.lang = (u.voice && u.voice.lang) || 'he-IL';
+    u.rate = Number(document.getElementById('studio-rate').value);
+    u.pitch = Number(document.getElementById('studio-pitch').value);
+    u.onstart = () => { if (!studio.raf) startRenderLoop(); startVisemeSpeak(u.text, u.rate); };
+    u.onend = () => stopVisemeSpeak();
+    window.speechSynthesis.speak(u);
+}
+
+// בוחר קול עברי מתאים (אם קיים) ומכוונן גובה/מהירות ליצירת גבר/אישה/ילד
+function applyVoicePreset(kind) {
+    const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+    const he = voices.map((v, i) => ({ v, i })).filter((o) => o.v.lang && o.v.lang.toLowerCase().startsWith('he'));
+    const byName = (re) => he.find((o) => re.test(o.v.name));
+    let pick = null, pitch = 1, rate = 1, label = '';
+    if (kind === 'male') {
+        pick = byName(/asaf|male|david|guy|אסף/i) || he[0];
+        pitch = 0.8; rate = 0.97; label = '👨 קול גבר';
+    } else if (kind === 'female') {
+        pick = byName(/carmit|female|woman|noa|hila|כרמית|נוה|הילה/i) || he[0];
+        pitch = 1.5; rate = 1.02; label = '👩 קול אישה';
+    } else {
+        pick = he[0];
+        pitch = 1.85; rate = 1.08; label = '🧒 קול ילד/ה';
+    }
+    const sel = document.getElementById('studio-voice');
+    if (pick && sel) sel.value = pick.i;
+    const r = document.getElementById('studio-rate');
+    const p = document.getElementById('studio-pitch');
+    r.value = rate; document.getElementById('studio-rate-value').textContent = rate;
+    p.value = pitch; document.getElementById('studio-pitch-value').textContent = pitch;
+    if (premiumProvider()) {
+        setStudioStatus(label + ' נבחר (לתצוגה — נקו קול פרימיום כדי שישמש בייצוא)');
+    } else {
+        setStudioStatus(label + ' נבחר 🙂');
+    }
+    speakBrowserSample();
 }
 
 /* ----------------------------- המרה ל-MP4 (ffmpeg.wasm, טעינה עצלה) ----------------------------- */
@@ -1344,8 +1499,8 @@ function speakLinePreview(line) {
         const text = (line.text || '').trim();
         if (!text) { resolve(); return; }
         try {
-            if (elConfigured()) {
-                const buf = await elFetchAudioBuffer(text);
+            if (premiumProvider()) {
+                const buf = await premiumFetchBuffer(text);
                 ensureAudioCtx();
                 studio.analyser.connect(studio.audioCtx.destination);
                 await playBufferThroughAnalyser(buf);

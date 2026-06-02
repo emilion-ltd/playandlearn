@@ -215,7 +215,23 @@
                         </div>
                         <label class="check-label"><input type="checkbox" id="studio-mp4" checked> ייצוא בפורמט MP4</label>
 
-                        <div class="panel-title">🔉 קול בסיסי (דפדפן)</div>
+                        <div class="panel-title">🤖 קול OpenAI</div>
+                        <p class="studio-text">קולות איכותיים מבית OpenAI (תומך עברית). הדביקו מפתח API ובחרו קול. נשמר רק בדפדפן שלכם.</p>
+                        <input id="oa-api-key" type="password" placeholder="OpenAI API Key (sk-...)" autocomplete="off">
+                        <select id="oa-voice"></select>
+                        <div class="tool-row">
+                            <button id="oa-save" class="primary-btn">💾 שמור</button>
+                            <button id="oa-test" class="primary-btn">🔊 בדוק</button>
+                            <button id="oa-clear" class="primary-btn">🗑️ נקה</button>
+                        </div>
+
+                        <div class="panel-title">🔉 קול בסיסי (דפדפן) — חינם</div>
+                        <p class="studio-text">בחירה מהירה (גובה הקול מותאם ליצירת דמויות שונות):</p>
+                        <div class="tool-row">
+                            <button id="voice-male" class="primary-btn">👨 גבר</button>
+                            <button id="voice-female" class="primary-btn">👩 אישה</button>
+                            <button id="voice-child" class="primary-btn">🧒 ילד/ה</button>
+                        </div>
                         <select id="studio-voice"></select>
                         <label class="range-label">מהירות: <span id="studio-rate-value">1</span></label>
                         <input type="range" id="studio-rate" min="0.5" max="1.5" step="0.1" value="1">
