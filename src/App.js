@@ -6,6 +6,7 @@ import { PlayersProvider, usePlayers } from './context/PlayersContext';
 import { PlayerModalRoot } from './components/player/PlayerModal';
 import CelebrationOverlay from './components/player/CelebrationOverlay';
 import ShareBar from './components/common/ShareBar';
+import Icon from './components/common/Icon';
 import { theme } from './theme';
 
 import HomeScreen from './screens/HomeScreen';
@@ -258,8 +259,8 @@ function AppInner() {
           </Brand>
           <NavGroup>
             {canGoBack && <IconBtn onClick={goBack} title="חזרה">←</IconBtn>}
-            <IconBtn onClick={goHome} title="בית">🏠</IconBtn>
-            <IconBtn onClick={() => navigate('records')} title="אלופים ושיאים">🏆</IconBtn>
+            <IconBtn onClick={goHome} title="בית"><Icon name="home" color={theme.colors.text} size={24} /></IconBtn>
+            <IconBtn onClick={() => navigate('records')} title="אלופים ושיאים"><Icon name="trophy" color={theme.colors.accent} size={24} /></IconBtn>
             <PlayerChip onClick={() => setModal(true)}>
               <span className="av">{currentPlayer?.emoji || '👤'}</span>
               <span className="info">

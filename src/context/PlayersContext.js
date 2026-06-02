@@ -7,13 +7,13 @@ export const avatarOptions = ['🦊', '🐼', '🦄', '🐲', '🦁', '🐧', '�
 
 // שמות המשחקים לתצוגה בטבלת השיאים
 export const gameMeta = {
-  math: { label: 'חשבון', emoji: '🔢', unit: 'נק׳' },
-  english: { label: 'אנגלית', emoji: '🇬🇧', unit: 'נק׳' },
-  science: { label: 'מדע', emoji: '🔬', unit: 'נק׳' },
-  reading: { label: 'קריאה', emoji: '📖', unit: 'נק׳' },
-  typing: { label: 'הקלדה', emoji: '⌨️', unit: 'מל״ד' },
-  'typing-mobile': { label: 'מהירות נייד', emoji: '📱', unit: 'נק׳' },
-  music: { label: 'פסנתר', emoji: '🎹', unit: 'נק׳' },
+  math: { label: 'חשבון', emoji: '🔢', icon: 'math', color: '#51cf66', unit: 'נק׳' },
+  english: { label: 'אנגלית', emoji: '🇬🇧', icon: 'english', color: '#22b8cf', unit: 'נק׳' },
+  science: { label: 'מדע', emoji: '🔬', icon: 'science', color: '#845ef7', unit: 'נק׳' },
+  reading: { label: 'קריאה', emoji: '📖', icon: 'reading', color: '#a855f7', unit: 'נק׳' },
+  typing: { label: 'הקלדה', emoji: '⌨️', icon: 'typing', color: '#5b6cf9', unit: 'מל״ד' },
+  'typing-mobile': { label: 'מהירות נייד', emoji: '📱', icon: 'typing', color: '#4dabf7', unit: 'נק׳' },
+  music: { label: 'פסנתר', emoji: '🎹', icon: 'music', color: '#e64980', unit: 'נק׳' },
 };
 
 function load() {

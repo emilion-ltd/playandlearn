@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Card } from '../components/common/UI';
+import Icon from '../components/common/Icon';
 import { useApp } from '../context/AppContext';
 import { grades, gradeMeta, subjects } from '../data/curriculum';
 import { theme } from '../theme';
@@ -33,8 +34,7 @@ const GradeCard = styled(motion.div)`
   color: #fff;
   background: ${(p) => `linear-gradient(135deg, ${p.$main}, ${p.$main}cc)`};
   box-shadow: ${theme.shadow.md};
-  .emoji { font-size: 2.6rem; }
-  .label { font-size: 1.3rem; font-weight: 800; margin-top: 0.4rem; }
+  .label { font-size: 1.3rem; font-weight: 600; margin-top: 0.4rem; }
   .age { font-size: 0.85rem; opacity: 0.9; }
 `;
 
@@ -52,7 +52,7 @@ const FeatureCard = styled(Card)`
   align-items: center;
   text-align: right;
   border-right: 6px solid ${(p) => p.$color};
-  .emoji { font-size: 2.4rem; }
+  .ico { flex: 0 0 auto; background: ${(p) => p.$color}14; border-radius: 16px; padding: 8px; display: grid; place-items: center; }
   h3 { color: ${theme.colors.text}; font-size: 1.15rem; }
   p { color: ${theme.colors.textLight}; font-size: 0.85rem; }
 `;
@@ -86,7 +86,7 @@ export default function HomeScreen() {
               whileTap={{ scale: 0.97 }}
               onClick={() => navigate('grade', { grade: g })}
             >
-              <div className="emoji">{meta.emoji}</div>
+              <Icon name="sprout" color="#fff" size={46} />
               <div className="label">{meta.label}</div>
               <div className="age">{meta.age}</div>
             </GradeCard>
@@ -104,7 +104,7 @@ export default function HomeScreen() {
             whileHover={{ x: -4 }}
             onClick={() => navigate(s.screen)}
           >
-            <div className="emoji">{s.emoji}</div>
+            <div className="ico"><Icon name={s.id} color={s.color} size={38} /></div>
             <div>
               <h3>{s.title}</h3>
               <p>{s.description}</p>

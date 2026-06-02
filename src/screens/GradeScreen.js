@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Card, Badge } from '../components/common/UI';
+import Icon from '../components/common/Icon';
 import { useApp } from '../context/AppContext';
 import { gradeMeta, subjectsForGrade } from '../data/curriculum';
 import { theme } from '../theme';
@@ -30,7 +31,7 @@ const SubjectCard = styled(Card)`
   gap: 0.5rem;
   border-top: 6px solid ${(p) => p.$color};
   position: relative;
-  .emoji { font-size: 3rem; }
+  .ico { background: ${(p) => p.$color}14; border-radius: 18px; padding: 12px; display: grid; place-items: center; }
   h3 { color: ${theme.colors.text}; font-size: 1.3rem; }
   p { color: ${theme.colors.textLight}; font-size: 0.9rem; }
 `;
@@ -50,7 +51,7 @@ export default function GradeScreen({ grade }) {
   return (
     <div>
       <Head>
-        <div className="emoji">{meta.emoji}</div>
+        <Icon name="sprout" color={colors.main} size={56} />
         <h2 style={{ color: colors.main }}>{meta.label}</h2>
         <p>{meta.age} · בחרו נושא ללמידה</p>
       </Head>
@@ -66,7 +67,7 @@ export default function GradeScreen({ grade }) {
             onClick={() => !s.comingSoon && navigate(s.screen, { grade })}
           >
             {s.comingSoon && <SoonTag $bg={theme.colors.accent}>בקרוב</SoonTag>}
-            <div className="emoji">{s.emoji}</div>
+            <div className="ico"><Icon name={s.id} color={s.color} size={48} /></div>
             <h3>{s.title}</h3>
             <p>{s.description}</p>
           </SubjectCard>

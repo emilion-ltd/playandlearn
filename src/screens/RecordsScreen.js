@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { usePlayers, gameMeta } from '../context/PlayersContext';
 import { Card, Button } from '../components/common/UI';
+import Icon from '../components/common/Icon';
 import { PlayerModalRoot } from '../components/player/PlayerModal';
 import { theme } from '../theme';
 
@@ -124,7 +125,7 @@ export default function RecordsScreen() {
         <GameGrid>
           {gameHolders.map(({ gid, best, holder }) => (
             <GameCard key={gid}>
-              <div className="emoji">{gameMeta[gid].emoji}</div>
+              <div className="emoji"><Icon name={gameMeta[gid].icon} color={gameMeta[gid].color} size={36} /></div>
               <div className="label">{gameMeta[gid].label}</div>
               <div className="best">{best > 0 ? `${best}` : '—'}</div>
               <div className="holder">{holder ? `${holder.emoji} ${holder.name}` : 'אין שיא עדיין'}</div>
