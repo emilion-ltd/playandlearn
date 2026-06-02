@@ -36,17 +36,27 @@ export const theme = {
     'thumb': '#ced4da',
   },
   shadow: {
-    sm: '0 2px 6px rgba(40, 50, 90, 0.08)',
-    md: '0 6px 18px rgba(40, 50, 90, 0.12)',
-    lg: '0 14px 34px rgba(40, 50, 90, 0.18)',
+    sm: '0 2px 8px rgba(60, 70, 120, 0.08)',
+    md: '0 10px 28px rgba(60, 70, 120, 0.12)',
+    lg: '0 22px 48px rgba(60, 70, 120, 0.20)',
+    glow: '0 8px 30px rgba(91, 108, 249, 0.35)',
   },
   radius: {
-    sm: '10px',
-    md: '16px',
-    lg: '24px',
+    sm: '12px',
+    md: '18px',
+    lg: '28px',
     pill: '999px',
   },
-  font: "'Segoe UI', 'Rubik', 'Arial', sans-serif",
+  // פונט גוף (Rubik, עד עובי 600) וכותרות (Varela Round - עגול וייחודי)
+  font: "'Rubik', 'Varela Round', system-ui, sans-serif",
+  display: "'Varela Round', 'Rubik', system-ui, sans-serif",
+};
+
+// משקלי גופן מותרים - מקסימום 600 (לפי בקשת המשתמש)
+export const fw = {
+  regular: 400,
+  medium: 500,
+  bold: 600,
 };
 
 export const fingerLabels = {

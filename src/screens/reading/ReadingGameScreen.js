@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Card } from '../../components/common/UI';
 import { useApp } from '../../context/AppContext';
+import { usePlayers } from '../../context/PlayersContext';
 import { getQuestionsByStage } from '../../data/reading/questions';
 import { getCharacterById } from '../../data/reading/characters';
 import {
@@ -154,6 +155,7 @@ function answerColors(showFeedback, isCorrectAnswer, isSelected, isCorrect) {
 
 export default function ReadingGameScreen({ character, stage }) {
   const { navigate, goBack } = useApp();
+  const { submitScore } = usePlayers();
   const stageQuestions = getQuestionsByStage(stage);
   const char = getCharacterById(character);
   const playerName = getPlayerName();
@@ -166,6 +168,7 @@ export default function ReadingGameScreen({ character, stage }) {
   const [totalStars, setTotalStars] = useState(getTotalStars());
   const [completed, setCompleted] = useState(getCompletedQuestions());
   const [finished, setFinished] = useState(false);
+  const [roundStars, setRoundStars] = useState(0);
 
   const [qTime, setQTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
@@ -194,6 +197,7 @@ export default function ReadingGameScreen({ character, stage }) {
     setShowFeedback(true);
     if (correct) {
       setEarned(q.stars);
+      setRoundStars((r) => r + q.stars);
       setTotalStars(addStars(q.stars));
       saveCompletedQuestion(q.id);
       saveBestTime(qTime);
@@ -216,6 +220,7 @@ export default function ReadingGameScreen({ character, stage }) {
       setIndex((p) => p + 1);
       resetQ();
     } else {
+      submitScore('reading', roundStars * 10);
       setFinished(true);
     }
   };

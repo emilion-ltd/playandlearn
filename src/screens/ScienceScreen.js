@@ -43,6 +43,7 @@ export default function ScienceScreen() {
     const t = scienceTopics.find((x) => x.id === topic);
     return (
       <QuizGame
+        gameId="science"
         title={`מדע · ${t.label}`}
         emoji={t.emoji}
         color={t.color}

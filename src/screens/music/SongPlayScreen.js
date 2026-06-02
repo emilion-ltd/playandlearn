@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import Piano from '../../components/music/Piano';
 import { Button, Card, ProgressBar, Stars } from '../../components/common/UI';
 import { useApp } from '../../context/AppContext';
+import { usePlayers } from '../../context/PlayersContext';
 import { songs, baseBeatSeconds } from '../../data/music/songs';
 import { noteById } from '../../data/music/notes';
 import { playSequence, resumeAudio } from '../../audio/synth';
@@ -71,6 +72,7 @@ function starsForMistakes(m) {
 
 export default function SongPlayScreen({ songId }) {
   const { goBack } = useApp();
+  const { submitScore } = usePlayers();
   const song = songs.find((s) => s.id === songId);
 
   const [index, setIndex] = useState(0);
@@ -108,6 +110,8 @@ export default function SongPlayScreen({ songId }) {
         if (index < sequence.length - 1) {
           setIndex((i) => i + 1);
         } else {
+          const points = Math.max(0, sequence.length * 10 - mistakes * 5);
+          submitScore('music', points);
           setFinished(true);
         }
       } else {
@@ -116,7 +120,7 @@ export default function SongPlayScreen({ songId }) {
         setTimeout(() => setErrorFlash(false), 220);
       }
     },
-    [demoPlaying, finished, index, sequence]
+    [demoPlaying, finished, index, sequence, mistakes, submitScore]
   );
 
   const listen = () => {

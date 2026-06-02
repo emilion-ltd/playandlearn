@@ -43,6 +43,7 @@ export default function EnglishScreen() {
     const cat = englishCategories.find((c) => c.id === category);
     return (
       <QuizGame
+        gameId="english"
         title={`אנגלית · ${cat.label}`}
         emoji={cat.emoji}
         color={cat.color}

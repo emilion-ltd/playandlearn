@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import Keyboard from './Keyboard';
 import { Button, Card, ProgressBar, Stars } from '../common/UI';
+import { usePlayers } from '../../context/PlayersContext';
 import { theme } from '../../theme';
 
 const Wrap = styled.div`
@@ -79,6 +80,7 @@ function computeStars(accuracy, wpm) {
 }
 
 export default function TypingLesson({ lesson, onComplete, onNext, onExit, hasNext }) {
+  const { submitScore } = usePlayers();
   const text = lesson.text;
   const lang = lesson.lang;
   const [index, setIndex] = useState(0);
@@ -103,9 +105,10 @@ export default function TypingLesson({ lesson, onComplete, onNext, onExit, hasNe
       const res = { wpm, accuracy, stars, errors: finalErrors };
       setResult(res);
       setPhase('done');
+      submitScore('typing', wpm);
       onComplete?.(res);
     },
-    [startTime, text, onComplete]
+    [startTime, text, onComplete, submitScore]
   );
 
   const handleKey = useCallback(

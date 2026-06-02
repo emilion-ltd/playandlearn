@@ -24,6 +24,15 @@ export const subjects = [
     grades: ['ב', 'ג', 'ד', 'ה', 'ו'],
   },
   {
+    id: 'art',
+    title: 'אומנות וציור',
+    emoji: '🎨',
+    color: '#fa5252',
+    description: 'עולם הציורים: ציור, צביעה, מדבקות ודמות מדברת',
+    screen: 'art',
+    grades: ['א', 'ב', 'ג', 'ד', 'ה', 'ו'],
+  },
+  {
     id: 'music',
     title: 'מוסיקה ופסנתר',
     emoji: '🎹',

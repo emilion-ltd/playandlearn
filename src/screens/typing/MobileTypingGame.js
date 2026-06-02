@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Card, Stars } from '../../components/common/UI';
+import { usePlayers } from '../../context/PlayersContext';
 import { mobileLayout } from '../../data/typing/keyboardLayout';
 import { mobileWords } from '../../data/typing/lessons';
 import { theme } from '../../theme';
@@ -109,6 +110,7 @@ function loadBest() {
 }
 
 export default function MobileTypingGame() {
+  const { submitScore } = usePlayers();
   const [lang, setLang] = useState('he');
   const [phase, setPhase] = useState('ready'); // ready | playing | over
   const [word, setWord] = useState('');
@@ -155,8 +157,10 @@ export default function MobileTypingGame() {
         localStorage.setItem(BEST_KEY, String(nb));
         return nb;
       });
+      submitScore('typing-mobile', score);
     }
-  }, [phase, score]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   const press = useCallback(
     (ch) => {

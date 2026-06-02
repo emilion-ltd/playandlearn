@@ -49,6 +49,7 @@ export default function MathScreen({ grade }) {
     const opMeta = mathOps.find((o) => o.id === op);
     return (
       <QuizGame
+        gameId="math"
         title={`חשבון · ${opMeta.label}`}
         emoji={opMeta.emoji}
         color={opMeta.color}

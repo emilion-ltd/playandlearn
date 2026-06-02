@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Card, ProgressBar, Stars } from './UI';
+import { usePlayers } from '../../context/PlayersContext';
 import { theme } from '../../theme';
 
 const Wrap = styled.div`
@@ -113,7 +114,8 @@ function starsFor(score, total) {
  *  - onExit, onFinish?(score, total, stars)
  *  - encourage?: string[]  (הודעות עידוד בתשובה נכונה)
  */
-export default function QuizGame({ title, emoji, color = theme.colors.primary, makeQuestions, onExit, onFinish, encourage }) {
+export default function QuizGame({ title, emoji, color = theme.colors.primary, makeQuestions, onExit, onFinish, encourage, gameId }) {
+  const { submitScore } = usePlayers();
   const [questions, setQuestions] = useState([]);
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState(null);
@@ -154,6 +156,7 @@ export default function QuizGame({ title, emoji, color = theme.colors.primary, m
     } else {
       const stars = starsFor(score, questions.length);
       setFinished(true);
+      if (gameId) submitScore(gameId, score * 10);
       onFinish?.(score, questions.length, stars);
     }
   };
