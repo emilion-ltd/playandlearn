@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Card, Stars } from '../../components/common/UI';
-import { keyboardRows } from '../../data/typing/keyboardLayout';
+import { mobileLayout } from '../../data/typing/keyboardLayout';
 import { mobileWords } from '../../data/typing/lessons';
 import { theme } from '../../theme';
 
@@ -67,6 +67,7 @@ const KRow = styled.div`
   display: flex;
   gap: 4px;
   justify-content: center;
+  direction: ltr;
 `;
 
 const KeyBtn = styled(motion.button)`
@@ -229,15 +230,15 @@ export default function MobileTypingGame() {
               ))}
             </WordBox>
             <Keys>
-              {keyboardRows.map((row, ri) => (
+              {mobileLayout[lang].map((row, ri) => (
                 <KRow key={ri}>
-                  {row.map((k) => (
+                  {row.map((ch) => (
                     <KeyBtn
-                      key={k.en}
+                      key={ch}
                       whileTap={{ scale: 0.9, backgroundColor: theme.colors.accent }}
-                      onClick={() => press(k[lang])}
+                      onClick={() => press(ch)}
                     >
-                      {k[lang]}
+                      {ch}
                     </KeyBtn>
                   ))}
                 </KRow>
