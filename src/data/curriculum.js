@@ -61,12 +61,12 @@ export const subjects = [
   },
   {
     id: 'reading',
-    title: 'קריאה והבנה',
-    emoji: '📚',
-    color: '#ff922b',
-    description: 'סיפורים, מילים והבנת הנקרא',
-    comingSoon: true,
-    grades: ['א', 'ב', 'ג', 'ד'],
+    title: 'אותיות בארץ הפלאים',
+    emoji: '📖',
+    color: '#a855f7',
+    description: 'משחק קריאה: זיהוי אותיות, השלמת מילים וקריאת משפטים',
+    screen: 'reading-home',
+    grades: ['א', 'ב', 'ג'],
   },
 ];
 

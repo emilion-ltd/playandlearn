@@ -11,6 +11,10 @@ import TypingHomeScreen from './screens/typing/TypingHomeScreen';
 import TypingTrackScreen from './screens/typing/TypingTrackScreen';
 import TypingLessonScreen from './screens/typing/TypingLessonScreen';
 import MobileTypingGame from './screens/typing/MobileTypingGame';
+import ReadingHomeScreen from './screens/reading/ReadingHomeScreen';
+import CharacterSelectScreen from './screens/reading/CharacterSelectScreen';
+import StageSelectScreen from './screens/reading/StageSelectScreen';
+import ReadingGameScreen from './screens/reading/ReadingGameScreen';
 
 const GlobalStyle = createGlobalStyle`
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -88,6 +92,14 @@ function renderScreen(current) {
       return <TypingLessonScreen lang={params.lang} lessonId={params.lessonId} />;
     case 'typing-mobile':
       return <MobileTypingGame />;
+    case 'reading-home':
+      return <ReadingHomeScreen />;
+    case 'reading-character':
+      return <CharacterSelectScreen />;
+    case 'reading-stage':
+      return <StageSelectScreen character={params.character} />;
+    case 'reading-game':
+      return <ReadingGameScreen character={params.character} stage={params.stage} />;
     default:
       return <HomeScreen />;
   }
