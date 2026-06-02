@@ -416,6 +416,25 @@ function bindActions() {
     document.getElementById('action-clear').onclick = () => { pushUndo(); clearCanvas(false); showMessage('הקנבס נוקה'); };
     document.getElementById('action-save').onclick = saveDrawing;
     document.getElementById('action-animate').onclick = openStudio;
+    const shareBtn = document.getElementById('action-share');
+    if (shareBtn) shareBtn.onclick = shareDrawing;
+}
+
+/* שיתוף הציור — Web Share API עם נפילה להורדה */
+async function shareDrawing() {
+    const dataUrl = canvas.toDataURL('image/png');
+    try {
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], `ציור-${Date.now()}.png`, { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'עולם הציורים', text: 'הציור שלי! 🎨' });
+            showMessage('הציור שותף! 📤');
+            return;
+        }
+    } catch (e) { /* נפילה להורדה */ }
+    const a = document.createElement('a');
+    a.href = dataUrl; a.download = `ציור-${Date.now()}.png`; a.click();
+    showMessage('הציור ירד — אפשר לשתף אותו ברשתות 📤');
 }
 
 function clearCanvas(silent) {

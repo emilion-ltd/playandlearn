@@ -69,6 +69,7 @@
                     <button id="action-clear" title="נקה">🗑️ נקה</button>
                 </div>
                 <button id="action-save" class="primary-btn">💾 שמור ציור</button>
+                <button id="action-share" class="primary-btn">📤 שתף ציור</button>
                 <button id="action-animate" class="accent-btn">🎬 הפוך לדמות מדברת</button>
             </div>
         </div>
@@ -136,6 +137,16 @@
                     <div class="studio-hint" id="studio-instructions"></div>
                 </div>
                 <div class="studio-controls">
+                    <div class="panel-title">🎞️ סצנות (פריימים)</div>
+                    <p class="studio-text">הוסיפו כמה ציורים/דמויות — כל אחד עם משפט משלו — וייצאו סרטון אחד ארוך!</p>
+                    <div id="studio-scenes" class="studio-scenes"></div>
+                    <div class="tool-row">
+                        <button id="studio-add-current" class="primary-btn">➕ הוסף ציור נוכחי</button>
+                        <button id="studio-add-gallery" class="primary-btn">🖼️ מהגלריה</button>
+                    </div>
+                    <button id="studio-add-file" class="primary-btn">📁 העלה תמונה</button>
+                    <input type="file" id="studio-file-input" accept="image/*" class="hidden">
+
                     <div class="panel-title">1. זיהוי פנים</div>
                     <p class="studio-text">המערכת מזהה אוטומטית את הפה והעיניים בציור. אפשר גם לסמן ידנית.</p>
                     <button id="studio-detect" class="accent-btn">🔍 זהה פנים אוטומטית</button>
@@ -159,7 +170,14 @@
                         <button id="studio-play" class="accent-btn">▶️ נגן</button>
                         <button id="studio-record-voice" class="primary-btn">🎤 הקלט קול</button>
                     </div>
-                    <button id="studio-export" class="primary-btn">🎥 ייצא וידאו</button>
+                    <div class="tool-row">
+                        <button id="studio-export" class="primary-btn">🎥 ייצא סצנה</button>
+                        <button id="studio-export-all" class="accent-btn">🎬 ייצא סרטון מלא</button>
+                    </div>
+                    <div id="studio-share-row" class="tool-row hidden">
+                        <button id="studio-share" class="primary-btn">📤 שתף וידאו</button>
+                        <button id="studio-share-shot" class="primary-btn">📸 שתף תמונה</button>
+                    </div>
                     <div id="studio-status" class="studio-status"></div>
 
                     <div class="panel-title">✨ הפוך למציאות (AI)</div>
