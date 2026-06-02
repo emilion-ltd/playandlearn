@@ -1045,7 +1045,7 @@ async function renderSynthBuffer(text, scene, sr) {
     gain.gain.value = 0.0001;
     gain.connect(oac.destination);
     const osc = oac.createOscillator();
-    osc.type = 'triangle';
+    osc.type = synthWaveFor(base);
     const lfo = oac.createOscillator();
     lfo.type = 'sine'; lfo.frequency.value = 6;
     const lfoGain = oac.createGain(); lfoGain.gain.value = 7;
@@ -1227,7 +1227,7 @@ function synthSpeak(text, scene) {
         gain.gain.value = 0.0001;
         gain.connect(studio.analyser);
         const osc = ac.createOscillator();
-        osc.type = 'triangle';
+        osc.type = synthWaveFor(base);
         const lfo = ac.createOscillator();
         lfo.type = 'sine'; lfo.frequency.value = 6;
         const lfoGain = ac.createGain(); lfoGain.gain.value = 7;
@@ -1502,50 +1502,53 @@ async function testOpenAiVoice() {
     }
 }
 
-/* ----------------------------- בחירת קול מהירה (דפדפן, חינם) ----------------------------- */
-function speakBrowserSample(text) {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text || 'שלום, נעים מאוד! ככה אני נשמע.');
-    const sel = document.getElementById('studio-voice');
-    const voices = window.speechSynthesis.getVoices();
-    if (voices[sel.value]) u.voice = voices[sel.value];
-    u.lang = (u.voice && u.voice.lang) || 'he-IL';
-    u.rate = Number(document.getElementById('studio-rate').value);
-    u.pitch = Number(document.getElementById('studio-pitch').value);
-    u.onstart = () => { if (!studio.raf) startRenderLoop(); startVisemeSpeak(u.text, u.rate); };
-    u.onend = () => stopVisemeSpeak();
-    window.speechSynthesis.speak(u);
+/* ----------------------------- בחירת קול מהירה (חינם) ----------------------------- */
+// צורת גל לפי גובה — נותנת טמבר שונה לגבר/אישה/ילד
+function synthWaveFor(base) {
+    if (base < 0.95) return 'sawtooth';   // גבר — עשיר/נמוך
+    if (base > 1.6) return 'square';        // ילד — בהיר
+    return 'triangle';                      // אישה — רך
 }
 
-// בוחר קול עברי מתאים (אם קיים) ומכוונן גובה/מהירות ליצירת גבר/אישה/ילד
+function setSlider(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+    const lbl = document.getElementById(id + '-value');
+    if (lbl) lbl.textContent = val;
+}
+
+// תצוגה מקדימה חיה של "קול הדמות" (הקול שנכנס לסרטון בחינם) — תמיד נשמע ההבדל
+function previewSynthVoice(pitch, rate) {
+    ensureAudioCtx();
+    try { studio.analyser.disconnect(); } catch (e) { /* ignore */ }
+    studio.analyser.connect(studio.audioCtx.destination);
+    if (!studio.raf) startRenderLoop();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    synthSpeak('שָׁלוֹם, נָעִים מְאוֹד!', { pitch, rate });
+}
+
+// מגדיר קול גבר/אישה/ילד: גובה + טמבר לקול הדמות (ייצוא), ובחירת קול אמיתי ל-▶️ אם קיים
 function applyVoicePreset(kind) {
+    const presets = {
+        male:   { pitch: 0.7,  rate: 0.95, re: /avri|asaf|male|guy|david|aleksander|אסף|אברי|זכר/i, label: '👨 קול גבר' },
+        female: { pitch: 1.4,  rate: 1.0,  re: /hila|carmit|noa|female|woman|הילה|כרמית|נועה|נקבה/i, label: '👩 קול אישה' },
+        child:  { pitch: 1.95, rate: 1.1,  re: /hila|carmit|noa|female|google/i, label: '🧒 קול ילד/ה' },
+    };
+    const cfg = presets[kind] || presets.male;
+
+    // בחירת קול עברי אמיתי מתאים (אם הדפדפן מציע יותר מאחד — Edge/Mac/אנדרואיד)
     const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
     const he = voices.map((v, i) => ({ v, i })).filter((o) => o.v.lang && o.v.lang.toLowerCase().startsWith('he'));
-    const byName = (re) => he.find((o) => re.test(o.v.name));
-    let pick = null, pitch = 1, rate = 1, label = '';
-    if (kind === 'male') {
-        pick = byName(/asaf|male|david|guy|אסף/i) || he[0];
-        pitch = 0.8; rate = 0.97; label = '👨 קול גבר';
-    } else if (kind === 'female') {
-        pick = byName(/carmit|female|woman|noa|hila|כרמית|נוה|הילה/i) || he[0];
-        pitch = 1.5; rate = 1.02; label = '👩 קול אישה';
-    } else {
-        pick = he[0];
-        pitch = 1.85; rate = 1.08; label = '🧒 קול ילד/ה';
-    }
+    const pick = he.find((o) => cfg.re.test(o.v.name)) || he[0];
     const sel = document.getElementById('studio-voice');
     if (pick && sel) sel.value = pick.i;
-    const r = document.getElementById('studio-rate');
-    const p = document.getElementById('studio-pitch');
-    r.value = rate; document.getElementById('studio-rate-value').textContent = rate;
-    p.value = pitch; document.getElementById('studio-pitch-value').textContent = pitch;
-    if (premiumProvider()) {
-        setStudioStatus(label + ' נבחר (לתצוגה — נקו קול פרימיום כדי שישמש בייצוא)');
-    } else {
-        setStudioStatus(label + ' נבחר 🙂');
-    }
-    speakBrowserSample();
+
+    setSlider('studio-rate', cfg.rate);
+    setSlider('studio-pitch', cfg.pitch);
+    setStudioStatus(cfg.label + ' נבחר — ככה הוא יישמע בסרטון 🎬');
+
+    // תמיד מנגנים תצוגה מקדימה בקול הדמות, כדי שההבדל יישמע (גם בכרום/Windows)
+    previewSynthVoice(cfg.pitch, cfg.rate);
 }
 
 /* ----------------------------- המרה ל-MP4 (ffmpeg.wasm, טעינה עצלה) ----------------------------- */
