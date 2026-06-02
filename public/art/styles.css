@@ -440,4 +440,38 @@ input[type="range"] { width: 100%; }
 }
 .studio-status { margin-top: 10px; font-size: 0.85rem; min-height: 20px; color: var(--accent-color); font-weight: 700; }
 
+/* כלי כללי להסתרה */
+.hidden { display: none !important; }
+
+/* רצועת סצנות / פריימים */
+.studio-scenes {
+    display: flex; gap: 8px; overflow-x: auto; padding: 6px 2px 10px;
+    min-height: 70px;
+}
+.studio-scene-cell {
+    position: relative; flex: 0 0 auto; width: 64px; height: 64px;
+    border-radius: 8px; overflow: hidden; cursor: pointer;
+    border: 2px solid var(--border-color); background: #fff;
+}
+.studio-scene-cell.active { border-color: var(--accent-color); box-shadow: 0 0 0 2px var(--accent-color); }
+.studio-scene-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.studio-scene-cell .scene-num {
+    position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.6); color: #fff;
+    font-size: 0.7rem; font-weight: 700; border-radius: 50%; width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+}
+.studio-scene-cell .scene-del {
+    position: absolute; bottom: 2px; left: 2px; background: rgba(220,40,40,0.85); color: #fff;
+    border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; cursor: pointer; line-height: 1;
+}
+.studio-gallery-picker {
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; margin-bottom: 8px;
+    background: var(--secondary-color); border-radius: 8px; max-height: 160px; overflow-y: auto;
+}
+.studio-pick-thumb {
+    width: 56px; height: 56px; object-fit: cover; border-radius: 6px; cursor: pointer;
+    border: 2px solid transparent; background: #fff;
+}
+.studio-pick-thumb:hover { border-color: var(--accent-color); }
+
 #main-content { position: relative; }

@@ -33,6 +33,12 @@ const studio = {
     // ייצוא
     videoRecorder: null,
     videoChunks: [],
+    // סצנות / פריימים
+    scenes: [],             // [{ src, text, mouth, eyes, rate, pitch, voiceIndex }]
+    sceneIndex: -1,
+    activeSrc: null,        // dataURL של הציור הפעיל
+    lastVideoBlob: null,    // הווידאו האחרון שיוצא (לשיתוף)
+    exporting: false,
 };
 
 function initStudio() {
@@ -48,6 +54,15 @@ function initStudio() {
     document.getElementById('studio-record-voice').onclick = toggleRecordVoice;
     document.getElementById('studio-export').onclick = exportVideo;
     document.getElementById('studio-ai').onclick = runAiMakeReal;
+
+    // סצנות / פריימים
+    document.getElementById('studio-add-current').onclick = addCurrentDrawingScene;
+    document.getElementById('studio-add-gallery').onclick = toggleGalleryPicker;
+    document.getElementById('studio-add-file').onclick = () => document.getElementById('studio-file-input').click();
+    document.getElementById('studio-file-input').onchange = onStudioFilePicked;
+    document.getElementById('studio-export-all').onclick = exportAllScenes;
+    document.getElementById('studio-share').onclick = shareVideo;
+    document.getElementById('studio-share-shot').onclick = shareSnapshot;
 
     bindStudioPointer();
     bindStudioSliders();
@@ -78,34 +93,163 @@ function populateVoices() {
 
 function openStudio() {
     const main = document.getElementById('drawing-canvas');
-    const img = new Image();
-    img.onload = () => {
-        studio.baseImage = img;
-        // התאמת גודל אולפן ליחס הציור
-        const maxW = 520, maxH = 520;
-        const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-        studio.canvas.width = Math.round(img.width * scale);
-        studio.canvas.height = Math.round(img.height * scale);
-        // ברירת מחדל לפה: מרכז-תחתון של הציור
-        studio.mouth = {
-            x: studio.canvas.width * 0.35,
-            y: studio.canvas.height * 0.6,
-            w: studio.canvas.width * 0.3,
-            h: studio.canvas.height * 0.12,
-        };
-        studio.eyes = null;
-        document.getElementById('studio-overlay').classList.remove('hidden');
-        startRenderLoop();
-        // זיהוי אוטומטי בשקט; אם נכשל — נשארות ברירות המחדל
-        const found = autoDetectFace(false);
-        if (found) {
-            setStudioStatus('✅ זוהו פה ועיניים אוטומטית. כתוב טקסט ולחץ ▶️ נגן');
-        } else {
-            setStudioStatus('סמן את הפה בגרירה, כתוב טקסט ולחץ ▶️ נגן');
-        }
-        document.getElementById('studio-instructions').textContent = 'אפשר לגרור לסימון מחדש, או ללחוץ "זהה פנים אוטומטית"';
+    const src = main.toDataURL('image/png');
+    document.getElementById('studio-overlay').classList.remove('hidden');
+    // אם זו פתיחה ראשונה / אין סצנות — הציור הנוכחי הופך לסצנה הראשונה
+    if (studio.scenes.length === 0) {
+        studio.scenes = [makeScene(src)];
+        studio.sceneIndex = 0;
+        loadSceneIntoStudio(0, true);
+    } else {
+        loadSceneIntoStudio(studio.sceneIndex < 0 ? 0 : studio.sceneIndex, false);
+    }
+    renderScenesStrip();
+}
+
+function makeScene(src, text) {
+    return {
+        src,
+        text: text || 'שלום! אני הדמות שציירתם.',
+        mouth: null,
+        eyes: null,
+        rate: 1,
+        pitch: 1.2,
+        voiceIndex: null,
     };
-    img.src = main.toDataURL('image/png');
+}
+
+// טוען תמונה ל-baseImage ומתאים את גודל הקנבס; מחזיר Promise
+function loadStudioImage(src) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            studio.baseImage = img;
+            studio.activeSrc = src;
+            const maxW = 520, maxH = 520;
+            const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+            studio.canvas.width = Math.round(img.width * scale);
+            studio.canvas.height = Math.round(img.height * scale);
+            resolve(img);
+        };
+        img.src = src;
+    });
+}
+
+// טוען סצנה למצב העריכה הפעיל
+async function loadSceneIntoStudio(i, autodetect) {
+    const scene = studio.scenes[i];
+    if (!scene) return;
+    studio.sceneIndex = i;
+    await loadStudioImage(scene.src);
+    // פה/עיניים: אם נשמרו — נשתמש בהם, אחרת זיהוי אוטומטי
+    if (scene.mouth) {
+        studio.mouth = scene.mouth;
+        studio.eyes = scene.eyes || null;
+    } else {
+        studio.mouth = { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
+        studio.eyes = null;
+        if (autodetect !== false) autoDetectFace(false);
+    }
+    // ערכי הטקסט/קול
+    document.getElementById('studio-text').value = scene.text || '';
+    const rate = document.getElementById('studio-rate');
+    const pitch = document.getElementById('studio-pitch');
+    if (scene.rate) { rate.value = scene.rate; document.getElementById('studio-rate-value').textContent = scene.rate; }
+    if (scene.pitch) { pitch.value = scene.pitch; document.getElementById('studio-pitch-value').textContent = scene.pitch; }
+    if (scene.voiceIndex != null) { const v = document.getElementById('studio-voice'); if (v) v.value = scene.voiceIndex; }
+    if (!studio.raf) startRenderLoop();
+    setStudioStatus(`סצנה ${i + 1}/${studio.scenes.length} — כתוב טקסט ולחץ ▶️ נגן`);
+    renderScenesStrip();
+}
+
+// שומר את מצב העריכה הנוכחי לתוך הסצנה הפעילה
+function saveActiveToScene() {
+    const s = studio.scenes[studio.sceneIndex];
+    if (!s) return;
+    s.src = studio.activeSrc || s.src;
+    s.text = document.getElementById('studio-text').value;
+    s.mouth = studio.mouth;
+    s.eyes = studio.eyes;
+    s.rate = Number(document.getElementById('studio-rate').value);
+    s.pitch = Number(document.getElementById('studio-pitch').value);
+    s.voiceIndex = document.getElementById('studio-voice').value;
+}
+
+async function addSceneFromSrc(src) {
+    saveActiveToScene();
+    studio.scenes.push(makeScene(src));
+    await loadSceneIntoStudio(studio.scenes.length - 1, true);
+}
+
+function addCurrentDrawingScene() {
+    const main = document.getElementById('drawing-canvas');
+    addSceneFromSrc(main.toDataURL('image/png'));
+    setStudioStatus('✅ הציור הנוכחי נוסף כסצנה חדשה');
+}
+
+function onStudioFilePicked(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { addSceneFromSrc(reader.result); setStudioStatus('✅ התמונה נוספה כסצנה'); };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+}
+
+function deleteScene(i) {
+    if (studio.scenes.length <= 1) { setStudioStatus('צריך לפחות סצנה אחת'); return; }
+    studio.scenes.splice(i, 1);
+    if (studio.sceneIndex >= studio.scenes.length) studio.sceneIndex = studio.scenes.length - 1;
+    loadSceneIntoStudio(studio.sceneIndex, false);
+    renderScenesStrip();
+}
+
+// בחירת ציור מהגלריה של השחקן
+function toggleGalleryPicker() {
+    const strip = document.getElementById('studio-scenes');
+    let picker = document.getElementById('studio-gallery-picker');
+    if (picker) { picker.remove(); return; }
+    picker = document.createElement('div');
+    picker.id = 'studio-gallery-picker';
+    picker.className = 'studio-gallery-picker';
+    let drawings = [];
+    try { drawings = (state.players[state.currentPlayer] || {}).savedDrawings || []; } catch (e) { /* ignore */ }
+    if (!drawings.length) {
+        picker.innerHTML = '<div class="studio-text">אין ציורים שמורים. שמרו ציור (💾) או העלו תמונה.</div>';
+    } else {
+        drawings.slice().reverse().forEach((src) => {
+            const im = document.createElement('img');
+            im.src = src; im.className = 'studio-pick-thumb';
+            im.onclick = () => { addSceneFromSrc(src); picker.remove(); };
+            picker.appendChild(im);
+        });
+    }
+    strip.parentNode.insertBefore(picker, strip.nextSibling);
+}
+
+function renderScenesStrip() {
+    const strip = document.getElementById('studio-scenes');
+    if (!strip) return;
+    strip.innerHTML = '';
+    studio.scenes.forEach((scene, i) => {
+        const cell = document.createElement('div');
+        cell.className = 'studio-scene-cell' + (i === studio.sceneIndex ? ' active' : '');
+        const im = document.createElement('img');
+        im.src = scene.src;
+        im.onclick = () => { saveActiveToScene(); loadSceneIntoStudio(i, false); };
+        const num = document.createElement('span');
+        num.className = 'scene-num';
+        num.textContent = i + 1;
+        const del = document.createElement('button');
+        del.className = 'scene-del';
+        del.textContent = '✕';
+        del.title = 'מחק סצנה';
+        del.onclick = (ev) => { ev.stopPropagation(); deleteScene(i); };
+        cell.appendChild(im);
+        cell.appendChild(num);
+        cell.appendChild(del);
+        strip.appendChild(cell);
+    });
 }
 
 function closeStudio() {
@@ -554,10 +698,8 @@ async function exportVideo() {
     studio.videoRecorder.ondataavailable = (e) => { if (e.data.size) studio.videoChunks.push(e.data); };
     studio.videoRecorder.onstop = () => {
         const blob = new Blob(studio.videoChunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = `דמות-מדברת-${Date.now()}.webm`; a.click();
-        setStudioStatus('✅ הווידאו ירד! (פורמט webm)');
+        downloadVideoBlob(blob);
+        setStudioStatus('✅ הווידאו ירד! אפשר גם 📤 לשתף');
     };
 
     studio.videoRecorder.start();
@@ -633,6 +775,122 @@ async function runAiMakeReal() {
     } catch (err) {
         setStudioStatus('שגיאת AI: ' + err.message);
     }
+}
+
+/* ----------------------------- ייצוא סרטון מלא (כל הסצנות) ----------------------------- */
+async function exportAllScenes() {
+    if (studio.exporting) return;
+    if (!studio.canvas.captureStream) { setStudioStatus('הדפדפן לא תומך בייצוא וידאו'); return; }
+    saveActiveToScene();
+    if (studio.scenes.length === 0) { setStudioStatus('אין סצנות לייצוא'); return; }
+
+    studio.exporting = true;
+    setStudioStatus('🎬 מתחיל הקלטת סרטון מלא...');
+
+    // הקלטת וידאו על כל משך הסרטון
+    const videoStream = studio.canvas.captureStream(30);
+    studio.videoChunks = [];
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+    const recorder = new MediaRecorder(videoStream, { mimeType: mime });
+    recorder.ondataavailable = (e) => { if (e.data.size) studio.videoChunks.push(e.data); };
+    const done = new Promise((res) => { recorder.onstop = res; });
+    recorder.start();
+
+    // מעבר בין הסצנות לפי הסדר
+    for (let i = 0; i < studio.scenes.length; i++) {
+        const scene = studio.scenes[i];
+        setStudioStatus(`🎬 מקליט סצנה ${i + 1}/${studio.scenes.length}...`);
+        await loadStudioImage(scene.src);
+        studio.mouth = scene.mouth || { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
+        studio.eyes = scene.eyes || null;
+        await sleepFrames(450);                 // רגע "כניסה" לדמות
+        await speakSceneForExport(scene);
+        await sleepFrames(350);                 // נשימה בין סצנות
+    }
+
+    recorder.stop();
+    await done;
+    studio.exporting = false;
+    const blob = new Blob(studio.videoChunks, { type: 'video/webm' });
+    downloadVideoBlob(blob);
+    setStudioStatus('✅ הסרטון המלא ירד! (הקול נשמע בזמן ההקלטה; לקול בתוך הקובץ — השתמשו בהקלטת קול)');
+    // החזרת התצוגה לסצנה הפעילה
+    loadSceneIntoStudio(studio.sceneIndex, false);
+}
+
+// מדבר טקסט של סצנה אחת ומחזיר Promise שמסתיים בסיום הדיבור (עם גיבוי זמן)
+function speakSceneForExport(scene) {
+    return new Promise((resolve) => {
+        const text = (scene.text || '').trim();
+        if (!text) { resolve(); return; }
+        const fallbackMs = Math.max(2500, text.length * 130);
+        let finished = false;
+        const finish = () => { if (finished) return; finished = true; stopVisemeSpeak(); resolve(); };
+
+        if (!('speechSynthesis' in window)) {
+            // ללא TTS — מנפישים פה לפי הזמן בלבד
+            startVisemeSpeak(text, scene.rate || 1);
+            setTimeout(finish, fallbackMs);
+            return;
+        }
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        const voices = window.speechSynthesis.getVoices();
+        if (scene.voiceIndex != null && voices[scene.voiceIndex]) u.voice = voices[scene.voiceIndex];
+        u.lang = (u.voice && u.voice.lang) || 'he-IL';
+        u.rate = scene.rate || 1;
+        u.pitch = scene.pitch || 1.2;
+        u.onstart = () => startVisemeSpeak(text, u.rate);
+        u.onboundary = (e) => resyncVisemes(e.charIndex);
+        u.onend = finish;
+        window.speechSynthesis.speak(u);
+        setTimeout(finish, fallbackMs + 1500);   // גיבוי אם onend לא נורה
+    });
+}
+
+function sleepFrames(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+/* ----------------------------- שיתוף ----------------------------- */
+function downloadVideoBlob(blob) {
+    studio.lastVideoBlob = blob;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `דמות-מדברת-${Date.now()}.webm`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    const row = document.getElementById('studio-share-row');
+    if (row) row.classList.remove('hidden');
+}
+
+async function shareVideo() {
+    if (!studio.lastVideoBlob) { setStudioStatus('קודם ייצאו וידאו (🎥 / 🎬)'); return; }
+    const file = new File([studio.lastVideoBlob], `דמות-מדברת-${Date.now()}.webm`, { type: 'video/webm' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+            await navigator.share({ files: [file], title: 'עולם הציורים', text: 'הדמות המדברת שיצרתי! 🎬' });
+            setStudioStatus('✅ שותף!');
+        } catch (e) { setStudioStatus('השיתוף בוטל'); }
+    } else {
+        setStudioStatus('הדפדפן לא תומך בשיתוף קבצים — הווידאו ירד למכשיר, אפשר לשתף ידנית 📤');
+        downloadVideoBlob(studio.lastVideoBlob);
+    }
+}
+
+async function shareSnapshot() {
+    const dataUrl = studio.canvas.toDataURL('image/png');
+    const blob = await (await fetch(dataUrl)).blob();
+    const file = new File([blob], `דמות-${Date.now()}.png`, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+            await navigator.share({ files: [file], title: 'עולם הציורים', text: 'הדמות שציירתי! 🎨' });
+            setStudioStatus('✅ התמונה שותפה!');
+            return;
+        } catch (e) { /* נפילה להורדה */ }
+    }
+    const a = document.createElement('a');
+    a.href = dataUrl; a.download = file.name; a.click();
+    setStudioStatus('התמונה ירדה — אפשר לשתף אותה ברשתות 📸');
 }
 
 /* ----------------------------- עזר ----------------------------- */

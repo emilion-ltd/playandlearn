@@ -5,6 +5,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { PlayersProvider, usePlayers } from './context/PlayersContext';
 import { PlayerModalRoot } from './components/player/PlayerModal';
 import CelebrationOverlay from './components/player/CelebrationOverlay';
+import ShareBar from './components/common/ShareBar';
 import { theme } from './theme';
 
 import HomeScreen from './screens/HomeScreen';
@@ -283,6 +284,9 @@ function AppInner() {
         </AnimatePresence>
 
         <Footer>
+          <div style={{ marginBottom: '1.4rem' }}>
+            <ShareBar />
+          </div>
           <div className="row">
             <span>🎓 למידה</span>
             <span>🎮 משחקים</span>
