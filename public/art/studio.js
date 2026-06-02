@@ -63,37 +63,40 @@ const OA_VOICE_LS = 'studio-oa-voice';
 const OA_MODEL = 'gpt-4o-mini-tts';
 const OA_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'];
 
+// עזר עמיד: מקשר handler לאלמנט רק אם הוא קיים — כך כפתור חסר לא שובר את כל האתחול
+function on(id, evt, fn) {
+    const el = document.getElementById(id);
+    if (el) el[evt] = fn;
+    return el;
+}
+
 function initStudio() {
     studio.canvas = document.getElementById('studio-canvas');
     if (!studio.canvas) return;
     studio.ctx = studio.canvas.getContext('2d');
 
-    document.getElementById('studio-close').onclick = closeStudio;
-    document.getElementById('studio-detect').onclick = () => autoDetectFace(true);
-    document.getElementById('studio-mark-mouth').onclick = () => startMarking('mouth');
-    document.getElementById('studio-mark-eyes').onclick = () => startMarking('eyes');
-    const adjBtn = document.getElementById('studio-adjust');
-    if (adjBtn) adjBtn.onclick = toggleEditMode;
-    document.getElementById('studio-play').onclick = playTalk;
-    document.getElementById('studio-record-voice').onclick = toggleRecordVoice;
-    document.getElementById('studio-export').onclick = exportVideo;
-    document.getElementById('studio-ai').onclick = runAiMakeReal;
+    on('studio-close', 'onclick', closeStudio);
+    on('studio-detect', 'onclick', () => autoDetectFace(true));
+    on('studio-mark-mouth', 'onclick', () => startMarking('mouth'));
+    on('studio-mark-eyes', 'onclick', () => startMarking('eyes'));
+    on('studio-adjust', 'onclick', toggleEditMode);
+    on('studio-play', 'onclick', playTalk);
+    on('studio-record-voice', 'onclick', toggleRecordVoice);
+    on('studio-export', 'onclick', exportVideo);
+    on('studio-ai', 'onclick', runAiMakeReal);
 
     // סצנות / פריימים
-    document.getElementById('studio-add-current').onclick = addCurrentDrawingScene;
-    document.getElementById('studio-add-gallery').onclick = toggleGalleryPicker;
-    document.getElementById('studio-add-file').onclick = () => document.getElementById('studio-file-input').click();
-    document.getElementById('studio-file-input').onchange = onStudioFilePicked;
-    document.getElementById('studio-export-all').onclick = exportAllScenes;
-    document.getElementById('studio-share-shot').onclick = shareSnapshot;
+    on('studio-add-current', 'onclick', addCurrentDrawingScene);
+    on('studio-add-gallery', 'onclick', toggleGalleryPicker);
+    on('studio-add-file', 'onclick', () => document.getElementById('studio-file-input').click());
+    on('studio-file-input', 'onchange', onStudioFilePicked);
+    on('studio-export-all', 'onclick', exportAllScenes);
+    on('studio-share-shot', 'onclick', shareSnapshot);
 
     // נגן תצוגה מקדימה של הסרטון בתוך האתר
-    const pvReplay = document.getElementById('studio-preview-replay');
-    const pvDown = document.getElementById('studio-preview-download');
-    const pvShare = document.getElementById('studio-preview-share');
-    if (pvReplay) pvReplay.onclick = () => { const v = document.getElementById('studio-preview-video'); if (v) { v.currentTime = 0; v.play().catch(() => {}); } };
-    if (pvDown) pvDown.onclick = saveVideo;
-    if (pvShare) pvShare.onclick = shareVideo;
+    on('studio-preview-replay', 'onclick', () => { const v = document.getElementById('studio-preview-video'); if (v) { v.currentTime = 0; v.play().catch(() => {}); } });
+    on('studio-preview-download', 'onclick', saveVideo);
+    on('studio-preview-share', 'onclick', shareVideo);
 
     // הכתבה קולית (דיבור → טקסט)
     const micBtn = document.getElementById('studio-mic');
@@ -107,32 +110,32 @@ function initStudio() {
     }
 
     // שיחה בין שתי דמויות
-    document.getElementById('dlg-toggle').onclick = toggleDialog;
-    document.getElementById('dlg-mark-1').onclick = () => startMarking('mouth');
-    document.getElementById('dlg-mark-2').onclick = () => startMarking('mouth2');
-    document.getElementById('dlg-add-1').onclick = () => addDialogLine(1);
-    document.getElementById('dlg-add-2').onclick = () => addDialogLine(2);
-    document.getElementById('dlg-play').onclick = playDialog;
-    document.getElementById('dlg-export').onclick = exportDialog;
+    on('dlg-toggle', 'onclick', toggleDialog);
+    on('dlg-mark-1', 'onclick', () => startMarking('mouth'));
+    on('dlg-mark-2', 'onclick', () => startMarking('mouth2'));
+    on('dlg-add-1', 'onclick', () => addDialogLine(1));
+    on('dlg-add-2', 'onclick', () => addDialogLine(2));
+    on('dlg-play', 'onclick', playDialog);
+    on('dlg-export', 'onclick', exportDialog);
 
     // קולות פרימיום + הגדרות מתקדמות
-    document.getElementById('studio-adv-toggle').onclick = toggleAdvanced;
-    document.getElementById('el-save').onclick = saveElevenConfig;
-    document.getElementById('el-test').onclick = testElevenVoice;
-    document.getElementById('el-clear').onclick = clearElevenConfig;
+    on('studio-adv-toggle', 'onclick', toggleAdvanced);
+    on('el-save', 'onclick', saveElevenConfig);
+    on('el-test', 'onclick', testElevenVoice);
+    on('el-clear', 'onclick', clearElevenConfig);
     loadElevenConfig();
 
     // קול OpenAI
     populateOpenAiVoices();
-    document.getElementById('oa-save').onclick = saveOpenAiConfig;
-    document.getElementById('oa-test').onclick = testOpenAiVoice;
-    document.getElementById('oa-clear').onclick = clearOpenAiConfig;
+    on('oa-save', 'onclick', saveOpenAiConfig);
+    on('oa-test', 'onclick', testOpenAiVoice);
+    on('oa-clear', 'onclick', clearOpenAiConfig);
     loadOpenAiConfig();
 
     // בחירת קול מהירה (חינם): גבר / אישה / ילד
-    document.getElementById('voice-male').onclick = () => applyVoicePreset('male');
-    document.getElementById('voice-female').onclick = () => applyVoicePreset('female');
-    document.getElementById('voice-child').onclick = () => applyVoicePreset('child');
+    on('voice-male', 'onclick', () => applyVoicePreset('male'));
+    on('voice-female', 'onclick', () => applyVoicePreset('female'));
+    on('voice-child', 'onclick', () => applyVoicePreset('child'));
 
     bindStudioPointer();
     bindStudioSliders();
@@ -143,8 +146,8 @@ function initStudio() {
 function bindStudioSliders() {
     const rate = document.getElementById('studio-rate');
     const pitch = document.getElementById('studio-pitch');
-    rate.oninput = () => document.getElementById('studio-rate-value').textContent = rate.value;
-    pitch.oninput = () => document.getElementById('studio-pitch-value').textContent = pitch.value;
+    if (rate) rate.oninput = () => { const l = document.getElementById('studio-rate-value'); if (l) l.textContent = rate.value; };
+    if (pitch) pitch.oninput = () => { const l = document.getElementById('studio-pitch-value'); if (l) l.textContent = pitch.value; };
 }
 
 function populateVoices() {
