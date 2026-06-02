@@ -1600,11 +1600,14 @@ async function ensureFfmpeg() {
     }
     const { FFmpeg } = window.FFmpegWASM;
     const { toBlobURL } = window.FFmpegUtil;
-    // ליבת single-thread (לא דורשת cross-origin isolation). טוענים כ-blob מאותו
-    // מקור כדי שה-Worker יוכל לייבא אותם גם ב-GitHub Pages / דומיין מותאם.
-    const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+    // חשוב: כשטוענים את הספרייה מ-CDN, ה-Worker הפנימי (module worker) וגם הליבה
+    // חייבים להיטען כ-blob מאותו מקור, אחרת הדפדפן חוסם יצירת Worker חוצה-מקור.
+    // משתמשים בליבת ESM (single-thread) — אין צורך ב-COOP/COEP/SharedArrayBuffer.
+    const ffBase = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd';
+    const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
     const ff = new FFmpeg();
     await ff.load({
+        classWorkerURL: await toBlobURL(`${ffBase}/814.ffmpeg.js`, 'text/javascript'),
         coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
         wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
     });
