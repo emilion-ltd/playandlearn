@@ -18,6 +18,11 @@ import ReadingGameScreen from './screens/reading/ReadingGameScreen';
 import MathScreen from './screens/MathScreen';
 import EnglishScreen from './screens/EnglishScreen';
 import ScienceScreen from './screens/ScienceScreen';
+import MusicHomeScreen from './screens/music/MusicHomeScreen';
+import FreePlayScreen from './screens/music/FreePlayScreen';
+import NotesLearnScreen from './screens/music/NotesLearnScreen';
+import SongListScreen from './screens/music/SongListScreen';
+import SongPlayScreen from './screens/music/SongPlayScreen';
 
 const GlobalStyle = createGlobalStyle`
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -109,6 +114,16 @@ function renderScreen(current) {
       return <EnglishScreen />;
     case 'science':
       return <ScienceScreen />;
+    case 'music-home':
+      return <MusicHomeScreen />;
+    case 'music-free':
+      return <FreePlayScreen />;
+    case 'music-notes':
+      return <NotesLearnScreen />;
+    case 'music-songs':
+      return <SongListScreen level={params.level} />;
+    case 'music-play':
+      return <SongPlayScreen songId={params.songId} />;
     default:
       return <HomeScreen />;
   }

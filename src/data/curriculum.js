@@ -24,6 +24,15 @@ export const subjects = [
     grades: ['ב', 'ג', 'ד', 'ה', 'ו'],
   },
   {
+    id: 'music',
+    title: 'מוסיקה ופסנתר',
+    emoji: '🎹',
+    color: '#e64980',
+    description: 'נגנו פסנתר אמיתי, למדו תווים ונגנו שירים מוכרים',
+    screen: 'music-home',
+    grades: ['א', 'ב', 'ג', 'ד', 'ה', 'ו'],
+  },
+  {
     id: 'letters',
     title: 'האלף-בית',
     emoji: '🔤',
