@@ -137,52 +137,72 @@
                     <div class="studio-hint" id="studio-instructions"></div>
                 </div>
                 <div class="studio-controls">
-                    <div class="panel-title">🎞️ סצנות (פריימים)</div>
-                    <p class="studio-text">הוסיפו כמה ציורים/דמויות — כל אחד עם משפט משלו — וייצאו סרטון אחד ארוך!</p>
-                    <div id="studio-scenes" class="studio-scenes"></div>
-                    <div class="tool-row">
-                        <button id="studio-add-current" class="primary-btn">➕ הוסף ציור נוכחי</button>
-                        <button id="studio-add-gallery" class="primary-btn">🖼️ מהגלריה</button>
+                    <!-- שלב 1: דמויות -->
+                    <div class="kid-step">
+                        <div class="kid-label">1️⃣ הדמויות שלי</div>
+                        <div id="studio-scenes" class="studio-scenes"></div>
+                        <div class="tool-row">
+                            <button id="studio-add-current" class="primary-btn">➕ הוסף ציור</button>
+                            <button id="studio-add-gallery" class="primary-btn">🖼️ מהגלריה</button>
+                        </div>
                     </div>
-                    <button id="studio-add-file" class="primary-btn">📁 העלה תמונה</button>
-                    <input type="file" id="studio-file-input" accept="image/*" class="hidden">
 
-                    <div class="panel-title">1. זיהוי פנים</div>
-                    <p class="studio-text">המערכת מזהה אוטומטית את הפה והעיניים בציור. אפשר גם לסמן ידנית.</p>
-                    <button id="studio-detect" class="accent-btn">🔍 זהה פנים אוטומטית</button>
-                    <p class="studio-text">גרור על הציור כדי לסמן ידנית את הפה (שם נראה את תזוזת הדיבור).</p>
-                    <button id="studio-mark-mouth" class="primary-btn">✏️ סמן פה ידנית</button>
-
-                    <div class="panel-title">2. סמן עיניים (לא חובה)</div>
-                    <button id="studio-mark-eyes" class="primary-btn">👀 סמן עיניים (למצמוץ)</button>
-
-                    <div class="panel-title">3. הטקסט לדיבוב</div>
-                    <textarea id="studio-text" rows="3" placeholder="שלום! אני הדמות שציירת...">שלום! אני הדמות שציירתם. כיף לדבר איתכם!</textarea>
-                    <label class="range-label">קול:</label>
-                    <select id="studio-voice"></select>
-                    <label class="range-label">מהירות: <span id="studio-rate-value">1</span></label>
-                    <input type="range" id="studio-rate" min="0.5" max="1.5" step="0.1" value="1">
-                    <label class="range-label">גובה קול: <span id="studio-pitch-value">1.2</span></label>
-                    <input type="range" id="studio-pitch" min="0.5" max="2" step="0.1" value="1.2">
-
-                    <div class="panel-title">4. נגן / הקלט</div>
-                    <div class="tool-row">
-                        <button id="studio-play" class="accent-btn">▶️ נגן</button>
-                        <button id="studio-record-voice" class="primary-btn">🎤 הקלט קול</button>
+                    <!-- שלב 2: טקסט -->
+                    <div class="kid-step">
+                        <div class="kid-label">2️⃣ מה הדמות אומרת?</div>
+                        <textarea id="studio-text" rows="3" placeholder="כתבו כאן מה הדמות תגיד...">שלום! אני הדמות שציירתם. כיף לדבר איתכם!</textarea>
                     </div>
-                    <div class="tool-row">
-                        <button id="studio-export" class="primary-btn">🎥 ייצא סצנה</button>
-                        <button id="studio-export-all" class="accent-btn">🎬 ייצא סרטון מלא</button>
+
+                    <!-- שלב 3: קדימה -->
+                    <div class="kid-step">
+                        <div class="kid-label">3️⃣ קדימה!</div>
+                        <button id="studio-play" class="big-btn">▶️ שיהיה לדבר!</button>
+                        <button id="studio-export-all" class="big-btn accent-btn">🎬 צור סרטון</button>
                     </div>
+
                     <div id="studio-share-row" class="tool-row hidden">
-                        <button id="studio-share" class="primary-btn">📤 שתף וידאו</button>
+                        <button id="studio-share" class="primary-btn">📤 שתף סרטון</button>
                         <button id="studio-share-shot" class="primary-btn">📸 שתף תמונה</button>
                     </div>
                     <div id="studio-status" class="studio-status"></div>
 
-                    <div class="panel-title">✨ הפוך למציאות (AI)</div>
-                    <p class="studio-text">אפשרות מתקדמת: הפיכת הציור לתמונה מציאותית בעזרת בינה מלאכותית.</p>
-                    <button id="studio-ai" class="accent-btn">✨ הפעל AI</button>
+                    <!-- הגדרות מתקדמות (להורים/מורים) -->
+                    <button id="studio-adv-toggle" class="link-btn">⚙️ הגדרות מתקדמות</button>
+                    <div id="studio-advanced" class="studio-advanced hidden">
+                        <div class="panel-title">🎙️ קול פרימיום בעברית (ElevenLabs)</div>
+                        <p class="studio-text">קול טבעי עם הבעה ורגש, מושלם לדמויות מצחיקות ומלמדות. נרשמים ב-elevenlabs.io, מעתיקים מפתח API ומזהה קול (Voice ID). הנתונים נשמרים רק בדפדפן שלכם.</p>
+                        <input id="el-api-key" type="password" placeholder="ElevenLabs API Key" autocomplete="off">
+                        <input id="el-voice-id" type="text" placeholder="Voice ID" autocomplete="off">
+                        <div class="tool-row">
+                            <button id="el-save" class="primary-btn">💾 שמור קול</button>
+                            <button id="el-test" class="primary-btn">🔊 בדוק קול</button>
+                            <button id="el-clear" class="primary-btn">🗑️ נקה</button>
+                        </div>
+                        <label class="check-label"><input type="checkbox" id="studio-mp4" checked> ייצוא בפורמט MP4</label>
+
+                        <div class="panel-title">🙂 סימון פנים</div>
+                        <div class="tool-row">
+                            <button id="studio-detect" class="primary-btn">🔍 זהה פנים</button>
+                            <button id="studio-mark-mouth" class="primary-btn">✏️ פה</button>
+                            <button id="studio-mark-eyes" class="primary-btn">👀 עיניים</button>
+                        </div>
+
+                        <div class="panel-title">🔉 קול בסיסי (דפדפן)</div>
+                        <select id="studio-voice"></select>
+                        <label class="range-label">מהירות: <span id="studio-rate-value">1</span></label>
+                        <input type="range" id="studio-rate" min="0.5" max="1.5" step="0.1" value="1">
+                        <label class="range-label">גובה קול: <span id="studio-pitch-value">1.2</span></label>
+                        <input type="range" id="studio-pitch" min="0.5" max="2" step="0.1" value="1.2">
+
+                        <div class="panel-title">🎤 עוד אפשרויות</div>
+                        <div class="tool-row">
+                            <button id="studio-record-voice" class="primary-btn">🎤 הקלט קול</button>
+                            <button id="studio-export" class="primary-btn">🎥 ייצא סצנה</button>
+                        </div>
+                        <button id="studio-add-file" class="primary-btn">📁 העלה תמונה</button>
+                        <input type="file" id="studio-file-input" accept="image/*" class="hidden">
+                        <button id="studio-ai" class="primary-btn">✨ הפוך למציאות (AI)</button>
+                    </div>
                 </div>
             </div>
         </div>
