@@ -109,12 +109,11 @@ const Brand = styled.div`
   align-items: center;
   gap: 8px;
   .logo {
-    width: 34px; height: 34px;
-    display: grid; place-items: center;
+    width: 38px; height: 38px;
     border-radius: 11px;
-    background: linear-gradient(135deg, ${theme.colors.primary}, #8a6bff);
     box-shadow: ${theme.shadow.glow};
-    font-size: 1.1rem;
+    object-fit: cover;
+    display: block;
   }
   .txt { background: linear-gradient(90deg, ${theme.colors.primary}, #b052e0); -webkit-background-clip: text; background-clip: text; color: transparent; }
   @media (max-width: 520px) { .txt { display: none; } }
@@ -254,7 +253,7 @@ function AppInner() {
       <Shell>
         <TopBar>
           <Brand onClick={goHome}>
-            <span className="logo">🎓</span>
+            <img className="logo" src={`${process.env.PUBLIC_URL}/logo.png`} alt="עולם הלמידה" />
             <span className="txt">עולם הלמידה</span>
           </Brand>
           <NavGroup>
