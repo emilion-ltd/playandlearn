@@ -11,9 +11,13 @@ const studio = {
     canvas: null,
     ctx: null,
     baseImage: null,        // תמונת הציור (רקע)
-    mouth: null,            // {x,y,w,h}
-    eyes: null,             // {x,y,w,h}
-    marking: null,          // 'mouth' | 'eyes' | null
+    mouth: null,            // {x,y,w,h} — פה דמות 1
+    eyes: null,             // {x,y,w,h} — עיניים דמות 1
+    mouth2: null,           // {x,y,w,h} — פה דמות 2 (שיחה)
+    eyes2: null,            // {x,y,w,h} — עיניים דמות 2
+    activeWho: 1,           // איזו דמות מדברת כרגע (1/2)
+    dialog: [],             // [{ who:1|2, text }] — תסריט שיחה
+    marking: null,          // 'mouth' | 'eyes' | 'mouth2' | 'eyes2' | null
     editMode: true,         // הצגת ידיות כיוונון + גרירה/שינוי-גודל
     drag: null,             // { region, mode, startX, startY, orig }
     dragStart: null,
@@ -76,6 +80,15 @@ function initStudio() {
     document.getElementById('studio-export-all').onclick = exportAllScenes;
     document.getElementById('studio-share').onclick = shareVideo;
     document.getElementById('studio-share-shot').onclick = shareSnapshot;
+
+    // שיחה בין שתי דמויות
+    document.getElementById('dlg-toggle').onclick = toggleDialog;
+    document.getElementById('dlg-mark-1').onclick = () => startMarking('mouth');
+    document.getElementById('dlg-mark-2').onclick = () => startMarking('mouth2');
+    document.getElementById('dlg-add-1').onclick = () => addDialogLine(1);
+    document.getElementById('dlg-add-2').onclick = () => addDialogLine(2);
+    document.getElementById('dlg-play').onclick = playDialog;
+    document.getElementById('dlg-export').onclick = exportDialog;
 
     // קולות פרימיום + הגדרות מתקדמות
     document.getElementById('studio-adv-toggle').onclick = toggleAdvanced;
@@ -162,6 +175,9 @@ async function loadSceneIntoStudio(i, autodetect) {
     studio.sceneIndex = i;
     await loadStudioImage(scene.src);
     // פה/עיניים: אם נשמרו — נשתמש בהם, אחרת זיהוי אוטומטי
+    studio.mouth2 = scene.mouth2 || null;
+    studio.eyes2 = scene.eyes2 || null;
+    studio.activeWho = 1;
     if (scene.mouth) {
         studio.mouth = scene.mouth;
         studio.eyes = scene.eyes || null;
@@ -190,6 +206,8 @@ function saveActiveToScene() {
     s.text = document.getElementById('studio-text').value;
     s.mouth = studio.mouth;
     s.eyes = studio.eyes;
+    s.mouth2 = studio.mouth2;
+    s.eyes2 = studio.eyes2;
     s.rate = Number(document.getElementById('studio-rate').value);
     s.pitch = Number(document.getElementById('studio-pitch').value);
     s.voiceIndex = document.getElementById('studio-voice').value;
@@ -293,11 +311,24 @@ function toggleEditMode() {
 // גודל ידית האחיזה בפינה (בקואורדינטות הקנבס)
 function handleSize() { return Math.max(12, studio.canvas.width * 0.05); }
 
+const REGION_NAMES = ['mouth', 'mouth2', 'eyes', 'eyes2'];
+function regionRect(name) {
+    return name === 'mouth' ? studio.mouth : name === 'mouth2' ? studio.mouth2
+        : name === 'eyes' ? studio.eyes : studio.eyes2;
+}
+function setRegion(name, r) {
+    if (name === 'mouth') studio.mouth = r;
+    else if (name === 'mouth2') studio.mouth2 = r;
+    else if (name === 'eyes') studio.eyes = r;
+    else studio.eyes2 = r;
+}
+
 // בדיקה על איזה אזור/ידית לחצו
 function hitTest(p) {
     const hs = handleSize();
-    const regions = [['mouth', studio.mouth], ['eyes', studio.eyes]];
-    for (const [name, r] of regions) {
+    // קודם ידיות פינה (כל האזורים)
+    for (const name of REGION_NAMES) {
+        const r = regionRect(name);
         if (!r) continue;
         const corners = {
             nw: { x: r.x, y: r.y }, ne: { x: r.x + r.w, y: r.y },
@@ -309,7 +340,8 @@ function hitTest(p) {
         }
     }
     // גוף הריבוע = הזזה
-    for (const [name, r] of regions) {
+    for (const name of REGION_NAMES) {
+        const r = regionRect(name);
         if (!r) continue;
         if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) return { region: name, mode: 'move' };
     }
@@ -332,7 +364,7 @@ function bindStudioPointer() {
             const hit = hitTest(p);
             if (hit) {
                 e.preventDefault();
-                const orig = hit.region === 'mouth' ? studio.mouth : studio.eyes;
+                const orig = regionRect(hit.region);
                 studio.drag = { region: hit.region, mode: hit.mode, startX: p.x, startY: p.y, orig: { ...orig } };
             }
         }
@@ -382,7 +414,7 @@ function applyDrag(p) {
         r.x = Math.min(left, right); r.y = Math.min(top, bottom);
         r.w = Math.max(MIN, Math.abs(right - left)); r.h = Math.max(MIN, Math.abs(bottom - top));
     }
-    if (d.region === 'mouth') studio.mouth = r; else studio.eyes = r;
+    setRegion(d.region, r);
 }
 
 function normRect(a, b) {
@@ -546,8 +578,13 @@ function renderFrame(elapsed) {
     ctx.translate(-c.width / 2, -c.height / 2 + bob);
     ctx.drawImage(studio.baseImage, 0, 0, c.width, c.height);
 
-    if (studio.mouth) drawMouth(ctx, studio.mouth, s);
+    // צורת פה סגורה לדמות שאינה מדברת כרגע
+    const SIL_SHAPE = { open: 0.03, wide: 0.45, round: 0, teeth: 0, tongue: 0 };
+    const hasTwo = !!studio.mouth2;
+    if (studio.mouth) drawMouth(ctx, studio.mouth, (!hasTwo || studio.activeWho === 1) ? s : SIL_SHAPE);
+    if (studio.mouth2) drawMouth(ctx, studio.mouth2, studio.activeWho === 2 ? s : SIL_SHAPE);
     if (studio.eyes && studio.blink > 0) drawBlink(ctx, studio.eyes);
+    if (studio.eyes2 && studio.blink > 0) drawBlink(ctx, studio.eyes2);
     if (editing) drawEditHandles(ctx);
     ctx.restore();
 }
@@ -575,8 +612,10 @@ function drawEditHandles(ctx) {
         ctx.fillText(label, r.x + r.w / 2, r.y - hs * 0.4);
         ctx.restore();
     };
-    draw(studio.mouth, 'rgba(255,70,70,0.95)', '👄');
-    draw(studio.eyes, 'rgba(70,140,255,0.95)', '👀');
+    draw(studio.mouth, 'rgba(255,70,70,0.95)', studio.mouth2 ? '👄1' : '👄');
+    draw(studio.mouth2, 'rgba(255,150,40,0.95)', '👄2');
+    draw(studio.eyes, 'rgba(70,140,255,0.95)', studio.eyes2 ? '👀1' : '👀');
+    draw(studio.eyes2, 'rgba(40,200,200,0.95)', '👀2');
 }
 
 /* ציור פה לפי צורת הברה: open=פתיחה אנכית, wide=רוחב, round=עיגול,
@@ -888,6 +927,9 @@ async function exportScenes(list) {
         await loadStudioImage(scene.src);
         studio.mouth = scene.mouth || { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
         studio.eyes = scene.eyes || null;
+        studio.mouth2 = scene.mouth2 || null;
+        studio.eyes2 = scene.eyes2 || null;
+        studio.activeWho = scene.who || 1;
         await sleepFrames(450);
         await playSceneAudio(scene, mode);   // הקול נכנס לקובץ + מסנכרן את הפה
         await sleepFrames(350);
@@ -1180,6 +1222,157 @@ async function convertToMp4(webmBlob) {
 function wantMp4() {
     const cb = document.getElementById('studio-mp4');
     return cb ? cb.checked : true;
+}
+
+/* ----------------------------- שיחה בין שתי דמויות ----------------------------- */
+function toggleDialog() {
+    const panel = document.getElementById('dlg-panel');
+    const opening = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden');
+    if (opening) {
+        studio.editMode = true;
+        // יצירת פה ברירת-מחדל לדמות 2 (בצד ימין) אם עדיין אין
+        if (!studio.mouth2) {
+            studio.mouth2 = { x: studio.canvas.width * 0.6, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.28, h: studio.canvas.height * 0.12 };
+        }
+        setStudioStatus('סמנו פה לכל דמות (👄1 / 👄2), גררו למקום, וכתבו שיחה 💬');
+        renderDialogList();
+    }
+}
+
+function addDialogLine(who) {
+    const ta = document.getElementById('dlg-text');
+    const text = ta.value.trim();
+    if (!text) { setStudioStatus('כתבו משפט ואז בחרו מי אומר אותו 🙂'); return; }
+    studio.dialog.push({ who, text });
+    ta.value = '';
+    renderDialogList();
+    setStudioStatus(`נוסף ל-שיחה (דמות ${who}). ${studio.dialog.length} שורות`);
+}
+
+function removeDialogLine(i) {
+    studio.dialog.splice(i, 1);
+    renderDialogList();
+}
+
+function renderDialogList() {
+    const list = document.getElementById('dlg-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!studio.dialog.length) {
+        list.innerHTML = '<div class="studio-text">עדיין אין שיחה. כתבו משפט ולחצו "דמות 1 אומרת" או "דמות 2 אומרת".</div>';
+        return;
+    }
+    studio.dialog.forEach((line, i) => {
+        const row = document.createElement('div');
+        row.className = 'dlg-line who' + line.who;
+        const tag = document.createElement('span');
+        tag.className = 'dlg-who';
+        tag.textContent = line.who === 1 ? '①' : '②';
+        const txt = document.createElement('span');
+        txt.className = 'dlg-txt';
+        txt.textContent = line.text;
+        const del = document.createElement('button');
+        del.className = 'dlg-del';
+        del.textContent = '✕';
+        del.title = 'מחק שורה';
+        del.onclick = () => removeDialogLine(i);
+        row.appendChild(tag);
+        row.appendChild(txt);
+        row.appendChild(del);
+        list.appendChild(row);
+    });
+}
+
+// בונה רשימת "סצנות" מהשיחה — כולן על אותה תמונה, עם הפה הפעיל המתאים
+function buildDialogScenes() {
+    const rate = Number(document.getElementById('studio-rate').value) || 1;
+    const pitch = Number(document.getElementById('studio-pitch').value) || 1.2;
+    return studio.dialog.map((line) => ({
+        src: studio.activeSrc,
+        text: line.text,
+        mouth: studio.mouth,
+        mouth2: studio.mouth2,
+        eyes: studio.eyes,
+        eyes2: studio.eyes2,
+        who: line.who,
+        rate,
+        // קול שונה מעט לכל דמות (גובה) כדי שיישמעו כשתי דמויות
+        pitch: line.who === 2 ? Math.min(2, pitch + 0.4) : Math.max(0.6, pitch - 0.1),
+    }));
+}
+
+// תצוגה מקדימה של השיחה (ללא הקלטה)
+async function playDialog() {
+    if (studio.exporting) return;
+    if (!studio.dialog.length) { setStudioStatus('כתבו שיחה קודם 🙂'); return; }
+    saveActiveToScene();
+    studio.editMode = false;
+    setStudioStatus('💬 מנגן שיחה...');
+    for (const line of studio.dialog) {
+        await speakLinePreview(line);
+        await sleepFrames(220);
+    }
+    studio.activeWho = 1;
+    setStudioStatus('סיום השיחה 🙂 — אפשר ליצור סרטון 🎬');
+}
+
+// יוצר סרטון שיחה (עם קול) + מציג כפתורי שיתוף
+function exportDialog() {
+    if (!studio.dialog.length) { setStudioStatus('כתבו שיחה קודם 🙂'); return; }
+    if (!studio.mouth2) { setStudioStatus('סמנו גם פה לדמות 2 (👄2) 🙂'); return; }
+    saveActiveToScene();
+    studio.editMode = false;
+    return exportScenes(buildDialogScenes());
+}
+
+// משמיע שורת שיחה בתצוגה מקדימה ומסנכרן את הפה הפעיל
+function speakLinePreview(line) {
+    return new Promise(async (resolve) => {
+        studio.activeWho = line.who;
+        const text = (line.text || '').trim();
+        if (!text) { resolve(); return; }
+        try {
+            if (elConfigured()) {
+                const buf = await elFetchAudioBuffer(text);
+                ensureAudioCtx();
+                studio.analyser.connect(studio.audioCtx.destination);
+                await playBufferThroughAnalyser(buf);
+                resolve(); return;
+            }
+            if (studio.recordedBlob) {
+                ensureAudioCtx();
+                studio.analyser.connect(studio.audioCtx.destination);
+                const ab = await studio.recordedBlob.arrayBuffer();
+                const buf = await studio.audioCtx.decodeAudioData(ab.slice(0));
+                await playBufferThroughAnalyser(buf);
+                resolve(); return;
+            }
+            if (!('speechSynthesis' in window)) {
+                ensureAudioCtx();
+                studio.analyser.connect(studio.audioCtx.destination);
+                await synthSpeak(text, { rate: 1, pitch: line.who === 2 ? 1.6 : 1.0 });
+                resolve(); return;
+            }
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            const sel = document.getElementById('studio-voice');
+            const voices = window.speechSynthesis.getVoices();
+            if (voices[sel.value]) u.voice = voices[sel.value];
+            u.lang = (u.voice && u.voice.lang) || 'he-IL';
+            u.rate = 1;
+            u.pitch = line.who === 2 ? 1.7 : 1.0;   // שתי דמויות = שני גבהי קול
+            u.onstart = () => startVisemeSpeak(text, u.rate);
+            u.onboundary = (e) => resyncVisemes(e.charIndex);
+            let done = false;
+            const finish = () => { if (done) return; done = true; stopVisemeSpeak(); resolve(); };
+            u.onend = finish;
+            window.speechSynthesis.speak(u);
+            setTimeout(finish, Math.max(2500, text.length * 130) + 1500);
+        } catch (err) {
+            resolve();
+        }
+    });
 }
 
 /* ----------------------------- עזר ----------------------------- */

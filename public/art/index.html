@@ -180,6 +180,24 @@
                     </div>
                     <div id="studio-status" class="studio-status"></div>
 
+                    <!-- שיחה בין שתי דמויות -->
+                    <button id="dlg-toggle" class="link-btn">💬 שיחה בין שתי דמויות</button>
+                    <div id="dlg-panel" class="dlg-panel hidden">
+                        <p class="studio-text">סמנו פה לכל דמות, גררו אותם למקום, וכתבו את השיחה. בכל שורה בחרו מי מדבר.</p>
+                        <div class="tool-row">
+                            <button id="dlg-mark-1" class="primary-btn">👄 פה דמות 1</button>
+                            <button id="dlg-mark-2" class="primary-btn">👄 פה דמות 2</button>
+                        </div>
+                        <textarea id="dlg-text" rows="2" placeholder="מה אומרים עכשיו?"></textarea>
+                        <div class="tool-row">
+                            <button id="dlg-add-1" class="primary-btn">➕ דמות 1 אומרת</button>
+                            <button id="dlg-add-2" class="primary-btn">➕ דמות 2 אומרת</button>
+                        </div>
+                        <div id="dlg-list" class="dlg-list"></div>
+                        <button id="dlg-play" class="big-btn">▶️ נגן שיחה</button>
+                        <button id="dlg-export" class="big-btn accent-btn">🎬 צור סרטון שיחה ושתפו</button>
+                    </div>
+
                     <!-- הגדרות מתקדמות (להורים/מורים) -->
                     <button id="studio-adv-toggle" class="link-btn">⚙️ הגדרות מתקדמות</button>
                     <div id="studio-advanced" class="studio-advanced hidden">

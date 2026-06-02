@@ -471,6 +471,31 @@ input[type="range"] { width: 100%; }
     background: var(--secondary-color); color: var(--text-color); border: 1px solid var(--border-color);
 }
 .check-label { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; margin: 8px 0; cursor: pointer; }
+
+/* שיחה בין שתי דמויות */
+.dlg-panel {
+    border: 2px dashed #C44CE0; border-radius: 12px; padding: 12px; margin: 6px 0 10px;
+    background: rgba(196, 76, 224, 0.06);
+}
+.dlg-panel textarea {
+    width: 100%; box-sizing: border-box; padding: 8px; border-radius: 8px; margin: 6px 0;
+    background: var(--secondary-color); color: var(--text-color); border: 1px solid var(--border-color);
+}
+.dlg-list { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.dlg-line {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px;
+    background: var(--secondary-color); border-right: 5px solid #1f8bff;
+}
+.dlg-line.who2 { border-right-color: #ff9628; }
+.dlg-who { font-size: 1.1rem; font-weight: 900; }
+.dlg-line.who1 .dlg-who { color: #1f8bff; }
+.dlg-line.who2 .dlg-who { color: #ff9628; }
+.dlg-txt { flex: 1; font-size: 0.92rem; color: var(--text-color); }
+.dlg-del {
+    background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 0.95rem;
+    padding: 2px 6px; border-radius: 6px;
+}
+.dlg-del:hover { background: rgba(231, 76, 60, 0.12); }
 .check-label input { width: 18px; height: 18px; }
 
 /* רצועת סצנות / פריימים */
