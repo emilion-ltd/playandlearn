@@ -472,6 +472,27 @@ input[type="range"] { width: 100%; }
 }
 .check-label { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; margin: 8px 0; cursor: pointer; }
 
+/* מיקרופון להכתבה קולית */
+.mic-btn {
+    background: #fff; border: 2px solid var(--border-color); border-radius: 50%;
+    width: 34px; height: 34px; padding: 0; cursor: pointer; font-size: 1rem;
+    vertical-align: middle; margin-right: 6px; line-height: 1;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12); transition: transform 0.1s;
+}
+.mic-btn:hover { transform: scale(1.08); }
+.mic-btn.recording {
+    background: #e74c3c; border-color: #e74c3c;
+    animation: micpulse 1.2s infinite;
+}
+@keyframes micpulse {
+    0% { box-shadow: 0 0 0 0 rgba(231,76,60,0.5); }
+    70% { box-shadow: 0 0 0 9px rgba(231,76,60,0); }
+    100% { box-shadow: 0 0 0 0 rgba(231,76,60,0); }
+}
+.dlg-input-row { display: flex; align-items: flex-start; gap: 6px; }
+.dlg-input-row textarea { flex: 1; }
+.dlg-input-row .mic-btn { margin-top: 6px; flex: 0 0 auto; }
+
 /* שיחה בין שתי דמויות */
 .dlg-panel {
     border: 2px dashed #C44CE0; border-radius: 12px; padding: 12px; margin: 6px 0 10px;
