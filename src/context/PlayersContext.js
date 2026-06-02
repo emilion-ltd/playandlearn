@@ -86,19 +86,29 @@ export function PlayersProvider({ children }) {
 
   const currentPlayer = state.players.find((p) => p.id === state.currentId) || null;
 
-  // פרסום נוכחות + נתוני שחקן ל-Firebase כשהשחקן הפעיל משתנה
+  // פרסום נוכחות עבור השחקן הפעיל (מי מחובר עכשיו)
   const currentSig = currentPlayer
     ? `${currentPlayer.id}|${currentPlayer.points}|${JSON.stringify(currentPlayer.records || {})}`
     : '';
   useEffect(() => {
     if (!firebaseEnabled || !currentPlayer) return undefined;
     publishPresence(currentPlayer);
-    publishPlayer(currentPlayer);
     const iv = setInterval(() => touchPresence(currentPlayer), 30000);
     const id = currentPlayer.id;
     return () => { clearInterval(iv); clearPresence(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSig]);
+
+  // פרסום *כל* השחקנים המקומיים לטבלת האלופים הגלובלית (גיבוי בענן +
+  // הופעת כולם בטבלה, לא רק השחקן הפעיל). מתבצע בכל שינוי בנתוני השחקנים.
+  const allPlayersSig = state.players
+    .map((p) => `${p.id}:${p.points || 0}:${JSON.stringify(p.records || {})}`)
+    .join('|');
+  useEffect(() => {
+    if (!firebaseEnabled) return;
+    state.players.forEach((p) => publishPlayer(p));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPlayersSig]);
 
   // ניקוד הכי טוב במשחק נתון בין כל השחקנים (מקומי + גלובלי)
   const gameBest = useCallback(

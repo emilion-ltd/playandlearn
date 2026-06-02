@@ -1,0 +1,7 @@
+fix(multiplayer): deploy Firebase rules for playandlearn + publish all local players
+
+- Add firebase.json/.firebaserc and deploy RTDB rules opening read/write
+  to playandlearn/{presence,players} (was Permission denied -> no global sync)
+- Simplify rules to avoid rejecting new players with empty records {}
+- PlayersContext now publishes ALL local players to the global leaderboard
+  (cloud backup + everyone shows), not just the active player

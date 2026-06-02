@@ -2,36 +2,16 @@
   "rules": {
     "activePlayers": {
       ".read": true,
-      ".write": true,
-      "$playerId": {
-        ".validate": "newData.hasChildren(['name', 'character', 'stars', 'level', 'lastActive'])"
-      }
+      ".write": true
     },
     "playandlearn": {
       "presence": {
         ".read": true,
-        "$key": {
-          ".write": true,
-          ".validate": "newData.hasChildren(['name'])",
-          "name": { ".validate": "newData.isString() && newData.val().length <= 40" },
-          "emoji": { ".validate": "newData.isString() && newData.val().length <= 8" },
-          "points": { ".validate": "newData.isNumber()" },
-          "lastActive": { ".validate": "newData.isNumber()" },
-          "$other": { ".validate": false }
-        }
+        ".write": true
       },
       "players": {
         ".read": true,
-        "$key": {
-          ".write": true,
-          ".validate": "newData.hasChildren(['name'])",
-          "name": { ".validate": "newData.isString() && newData.val().length <= 40" },
-          "emoji": { ".validate": "newData.isString() && newData.val().length <= 8" },
-          "points": { ".validate": "newData.isNumber()" },
-          "records": { ".validate": "newData.hasChildren() || newData.val() == null" },
-          "updatedAt": { ".validate": "newData.isNumber()" },
-          "$other": { ".validate": false }
-        }
+        ".write": true
       }
     }
   }
