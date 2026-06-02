@@ -38,8 +38,17 @@ const studio = {
     sceneIndex: -1,
     activeSrc: null,        // dataURL של הציור הפעיל
     lastVideoBlob: null,    // הווידאו האחרון שיוצא (לשיתוף)
+    lastVideoExt: 'webm',
     exporting: false,
+    // קולות פרימיום (ElevenLabs)
+    elKey: '',
+    elVoice: '',
+    elCache: {},            // טקסט -> AudioBuffer (לחיסכון בקריאות חוזרות בייצוא)
 };
+
+const EL_KEY_LS = 'studio-el-key';
+const EL_VOICE_LS = 'studio-el-voice';
+const EL_MODEL = 'eleven_multilingual_v2';
 
 function initStudio() {
     studio.canvas = document.getElementById('studio-canvas');
@@ -63,6 +72,13 @@ function initStudio() {
     document.getElementById('studio-export-all').onclick = exportAllScenes;
     document.getElementById('studio-share').onclick = shareVideo;
     document.getElementById('studio-share-shot').onclick = shareSnapshot;
+
+    // קולות פרימיום + הגדרות מתקדמות
+    document.getElementById('studio-adv-toggle').onclick = toggleAdvanced;
+    document.getElementById('el-save').onclick = saveElevenConfig;
+    document.getElementById('el-test').onclick = testElevenVoice;
+    document.getElementById('el-clear').onclick = clearElevenConfig;
+    loadElevenConfig();
 
     bindStudioPointer();
     bindStudioSliders();
@@ -578,10 +594,11 @@ function drawBlink(ctx, e) {
 
 /* ----------------------------- דיבור (TTS) + ליפסינק ----------------------------- */
 function playTalk() {
+    const text = document.getElementById('studio-text').value.trim();
+    if (!text) { setStudioStatus('כתבו משפט לדמות 🙂'); return; }
+    if (elConfigured()) { playWithElevenLabs(text); return; }
     if (studio.recordedBlob) { playRecorded(); return; }
     if (!('speechSynthesis' in window)) { setStudioStatus('אין תמיכה בהקראה בדפדפן זה'); return; }
-    const text = document.getElementById('studio-text').value.trim();
-    if (!text) { setStudioStatus('כתוב טקסט לדיבוב'); return; }
 
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -668,65 +685,12 @@ function startAmplitudeLipSync() {
 }
 function stopAmplitudeLipSync() { if (ampRaf) cancelAnimationFrame(ampRaf); ampRaf = null; setVisemeShape('SIL'); }
 
-/* ----------------------------- ייצוא וידאו ----------------------------- */
-async function exportVideo() {
-    if (!studio.canvas.captureStream) { setStudioStatus('הדפדפן לא תומך בייצוא וידאו'); return; }
-    const videoStream = studio.canvas.captureStream(30);
-    let tracks = [...videoStream.getVideoTracks()];
-    let audioSource = null;
-
-    // אם יש הקלטת קול — נשלב אותה בקובץ
-    if (studio.recordedBlob) {
-        try {
-            ensureAudioCtx();
-            const arrayBuf = await studio.recordedBlob.arrayBuffer();
-            const audioBuf = await studio.audioCtx.decodeAudioData(arrayBuf.slice(0));
-            const dest = studio.audioCtx.createMediaStreamDestination();
-            audioSource = studio.audioCtx.createBufferSource();
-            audioSource.buffer = audioBuf;
-            audioSource.connect(studio.analyser);
-            studio.analyser.connect(dest);
-            studio.analyser.connect(studio.audioCtx.destination);
-            tracks = tracks.concat(dest.stream.getAudioTracks());
-        } catch (err) { /* נמשיך בלי אודיו */ }
-    }
-
-    const mixed = new MediaStream(tracks);
-    studio.videoChunks = [];
-    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
-    studio.videoRecorder = new MediaRecorder(mixed, { mimeType: mime });
-    studio.videoRecorder.ondataavailable = (e) => { if (e.data.size) studio.videoChunks.push(e.data); };
-    studio.videoRecorder.onstop = () => {
-        const blob = new Blob(studio.videoChunks, { type: 'video/webm' });
-        downloadVideoBlob(blob);
-        setStudioStatus('✅ הווידאו ירד! אפשר גם 📤 לשתף');
-    };
-
-    studio.videoRecorder.start();
-    setStudioStatus('🎥 מקליט וידאו...');
-
-    if (audioSource) {
-        startAmplitudeLipSync();
-        audioSource.onended = () => { stopAmplitudeLipSync(); studio.videoRecorder.stop(); };
-        audioSource.start();
-    } else {
-        // ללא הקלטה — נדבר ב-TTS ונקליט וידאו (ללא קול בקובץ, מגבלת דפדפן)
-        const text = document.getElementById('studio-text').value.trim() || 'שלום';
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'he-IL';
-        u.rate = Number(document.getElementById('studio-rate').value);
-        u.pitch = Number(document.getElementById('studio-pitch').value);
-        const voices = window.speechSynthesis.getVoices();
-        const sel = document.getElementById('studio-voice');
-        if (voices[sel.value]) u.voice = voices[sel.value];
-        u.onstart = () => startVisemeSpeak(text, u.rate);
-        u.onboundary = (e) => resyncVisemes(e.charIndex);
-        u.onend = () => { stopVisemeSpeak(); studio.videoRecorder.stop(); };
-        setStudioStatus('🎥 מקליט (לקול בקובץ — הקלט קול אמיתי)');
-        window.speechSynthesis.speak(u);
-        // גיבוי: עצירה אוטומטית אחרי זמן משוער
-        setTimeout(() => { if (studio.videoRecorder.state === 'recording') studio.videoRecorder.stop(); }, Math.max(4000, text.length * 120));
-    }
+/* ----------------------------- ייצוא וידאו (סצנה בודדת) ----------------------------- */
+function exportVideo() {
+    saveActiveToScene();
+    const scene = studio.scenes[studio.sceneIndex];
+    if (!scene) { setStudioStatus('אין סצנה לייצוא'); return; }
+    return exportScenes([scene]);
 }
 
 /* ----------------------------- הוק ל-AI דרך שרת-התיווך -----------------------------
@@ -778,44 +742,89 @@ async function runAiMakeReal() {
 }
 
 /* ----------------------------- ייצוא סרטון מלא (כל הסצנות) ----------------------------- */
-async function exportAllScenes() {
+function exportAllScenes() {
+    saveActiveToScene();
+    return exportScenes(studio.scenes);
+}
+
+async function exportScenes(list) {
     if (studio.exporting) return;
     if (!studio.canvas.captureStream) { setStudioStatus('הדפדפן לא תומך בייצוא וידאו'); return; }
-    saveActiveToScene();
-    if (studio.scenes.length === 0) { setStudioStatus('אין סצנות לייצוא'); return; }
+    if (!list || list.length === 0) { setStudioStatus('אין סצנות לייצוא'); return; }
 
     studio.exporting = true;
-    setStudioStatus('🎬 מתחיל הקלטת סרטון מלא...');
+    setStudioStatus('🎬 מתחיל ליצור סרטון...');
 
-    // הקלטת וידאו על כל משך הסרטון
+    // ערוץ אודיו להקלטה (קול פרימיום/מוקלט נכנס לקובץ)
+    let dest = null;
+    const useRealAudio = elConfigured() || !!studio.recordedBlob;
+    if (useRealAudio) {
+        ensureAudioCtx();
+        dest = studio.audioCtx.createMediaStreamDestination();
+        studio.analyser.connect(dest);
+        studio.analyser.connect(studio.audioCtx.destination);
+    }
+
     const videoStream = studio.canvas.captureStream(30);
+    let tracks = [...videoStream.getVideoTracks()];
+    if (dest) tracks = tracks.concat(dest.stream.getAudioTracks());
+    const mixed = new MediaStream(tracks);
+
+    const pick = pickVideoMime();
     studio.videoChunks = [];
-    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
-    const recorder = new MediaRecorder(videoStream, { mimeType: mime });
+    const recorder = new MediaRecorder(mixed, { mimeType: pick.mime });
     recorder.ondataavailable = (e) => { if (e.data.size) studio.videoChunks.push(e.data); };
     const done = new Promise((res) => { recorder.onstop = res; });
     recorder.start();
 
-    // מעבר בין הסצנות לפי הסדר
-    for (let i = 0; i < studio.scenes.length; i++) {
-        const scene = studio.scenes[i];
-        setStudioStatus(`🎬 מקליט סצנה ${i + 1}/${studio.scenes.length}...`);
+    for (let i = 0; i < list.length; i++) {
+        const scene = list[i];
+        setStudioStatus(`🎬 מקליט סצנה ${i + 1}/${list.length}...`);
         await loadStudioImage(scene.src);
         studio.mouth = scene.mouth || { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
         studio.eyes = scene.eyes || null;
-        await sleepFrames(450);                 // רגע "כניסה" לדמות
-        await speakSceneForExport(scene);
-        await sleepFrames(350);                 // נשימה בין סצנות
+        await sleepFrames(450);
+        if (useRealAudio) {
+            await playSceneRealAudio(scene);    // קול פרימיום — נכנס לקובץ
+        } else {
+            await speakSceneForExport(scene);   // קול דפדפן — נשמע אך לא נכנס לקובץ
+        }
+        await sleepFrames(350);
     }
 
     recorder.stop();
     await done;
     studio.exporting = false;
-    const blob = new Blob(studio.videoChunks, { type: 'video/webm' });
-    downloadVideoBlob(blob);
-    setStudioStatus('✅ הסרטון המלא ירד! (הקול נשמע בזמן ההקלטה; לקול בתוך הקובץ — השתמשו בהקלטת קול)');
-    // החזרת התצוגה לסצנה הפעילה
+    await finalizeVideo(pick);
+    if (useRealAudio) setStudioStatus('✅ הסרטון מוכן — עם קול! אפשר לשתף 📤');
+    else setStudioStatus('✅ הסרטון מוכן! (לקול בתוך הקובץ — הגדירו קול פרימיום ⚙️)');
     loadSceneIntoStudio(studio.sceneIndex, false);
+}
+
+// משמיע אודיו אמיתי (פרימיום/מוקלט) של סצנה לתוך ההקלטה + ליפסינק; מסתיים כשהקול נגמר
+function playSceneRealAudio(scene) {
+    return new Promise(async (resolve) => {
+        const text = (scene.text || '').trim();
+        try {
+            let buf;
+            if (elConfigured()) {
+                if (!text) { resolve(); return; }
+                buf = await elFetchAudioBuffer(text);
+            } else if (studio.recordedBlob) {
+                const ab = await studio.recordedBlob.arrayBuffer();
+                buf = await studio.audioCtx.decodeAudioData(ab.slice(0));
+            } else { resolve(); return; }
+            const src = studio.audioCtx.createBufferSource();
+            src.buffer = buf;
+            src.connect(studio.analyser);
+            startAmplitudeLipSync();
+            src.onended = () => { stopAmplitudeLipSync(); src.disconnect(); resolve(); };
+            src.start();
+        } catch (err) {
+            setStudioStatus('שגיאת קול: ' + err.message + ' — ממשיך בלי קול');
+            resolve();
+        }
+    });
 }
 
 // מדבר טקסט של סצנה אחת ומחזיר Promise שמסתיים בסיום הדיבור (עם גיבוי זמן)
@@ -850,13 +859,34 @@ function speakSceneForExport(scene) {
 
 function sleepFrames(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-/* ----------------------------- שיתוף ----------------------------- */
-function downloadVideoBlob(blob) {
+/* ----------------------------- גמר וידאו + שיתוף ----------------------------- */
+function pickVideoMime() {
+    const cands = ['video/mp4;codecs=h264,aac', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+    for (const m of cands) {
+        if (MediaRecorder.isTypeSupported(m)) {
+            return { mime: m, ext: m.startsWith('video/mp4') ? 'mp4' : 'webm' };
+        }
+    }
+    return { mime: 'video/webm', ext: 'webm' };
+}
+
+async function finalizeVideo(pick) {
+    let blob = new Blob(studio.videoChunks, { type: pick.mime.split(';')[0] });
+    let ext = pick.ext;
+    if (ext === 'webm' && wantMp4()) {
+        const mp4 = await convertToMp4(blob);
+        if (mp4 && mp4.type === 'video/mp4') { blob = mp4; ext = 'mp4'; }
+    }
+    downloadVideoBlob(blob, ext);
+}
+
+function downloadVideoBlob(blob, ext) {
     studio.lastVideoBlob = blob;
+    studio.lastVideoExt = ext || (blob.type.includes('mp4') ? 'mp4' : 'webm');
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `דמות-מדברת-${Date.now()}.webm`;
+    a.download = `דמות-מדברת-${Date.now()}.${studio.lastVideoExt}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
     const row = document.getElementById('studio-share-row');
@@ -864,16 +894,17 @@ function downloadVideoBlob(blob) {
 }
 
 async function shareVideo() {
-    if (!studio.lastVideoBlob) { setStudioStatus('קודם ייצאו וידאו (🎥 / 🎬)'); return; }
-    const file = new File([studio.lastVideoBlob], `דמות-מדברת-${Date.now()}.webm`, { type: 'video/webm' });
+    if (!studio.lastVideoBlob) { setStudioStatus('קודם צרו סרטון (🎬)'); return; }
+    const ext = studio.lastVideoExt || 'webm';
+    const file = new File([studio.lastVideoBlob], `דמות-מדברת-${Date.now()}.${ext}`, { type: studio.lastVideoBlob.type });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
             await navigator.share({ files: [file], title: 'עולם הציורים', text: 'הדמות המדברת שיצרתי! 🎬' });
             setStudioStatus('✅ שותף!');
         } catch (e) { setStudioStatus('השיתוף בוטל'); }
     } else {
-        setStudioStatus('הדפדפן לא תומך בשיתוף קבצים — הווידאו ירד למכשיר, אפשר לשתף ידנית 📤');
-        downloadVideoBlob(studio.lastVideoBlob);
+        setStudioStatus('הדפדפן לא תומך בשיתוף קבצים — הסרטון ירד למכשיר, אפשר לשתף ידנית 📤');
+        downloadVideoBlob(studio.lastVideoBlob, ext);
     }
 }
 
@@ -891,6 +922,140 @@ async function shareSnapshot() {
     const a = document.createElement('a');
     a.href = dataUrl; a.download = file.name; a.click();
     setStudioStatus('התמונה ירדה — אפשר לשתף אותה ברשתות 📸');
+}
+
+/* ----------------------------- קול פרימיום (ElevenLabs) ----------------------------- */
+function toggleAdvanced() {
+    const adv = document.getElementById('studio-advanced');
+    adv.classList.toggle('hidden');
+}
+
+function loadElevenConfig() {
+    studio.elKey = localStorage.getItem(EL_KEY_LS) || '';
+    studio.elVoice = localStorage.getItem(EL_VOICE_LS) || '';
+    const k = document.getElementById('el-api-key');
+    const v = document.getElementById('el-voice-id');
+    if (k) k.value = studio.elKey;
+    if (v) v.value = studio.elVoice;
+}
+
+function saveElevenConfig() {
+    studio.elKey = document.getElementById('el-api-key').value.trim();
+    studio.elVoice = document.getElementById('el-voice-id').value.trim();
+    localStorage.setItem(EL_KEY_LS, studio.elKey);
+    localStorage.setItem(EL_VOICE_LS, studio.elVoice);
+    studio.elCache = {};
+    setStudioStatus(elConfigured() ? '✅ הקול נשמר! לחצו ▶️ כדי לשמוע' : 'מלאו מפתח API ומזהה קול');
+}
+
+function clearElevenConfig() {
+    studio.elKey = ''; studio.elVoice = '';
+    localStorage.removeItem(EL_KEY_LS); localStorage.removeItem(EL_VOICE_LS);
+    document.getElementById('el-api-key').value = '';
+    document.getElementById('el-voice-id').value = '';
+    studio.elCache = {};
+    setStudioStatus('הקול הפרימיום נוקה — חוזרים לקול הדפדפן');
+}
+
+function elConfigured() { return !!(studio.elKey && studio.elVoice); }
+
+// מביא אודיו מ-ElevenLabs ומחזיר AudioBuffer (עם מטמון לפי טקסט)
+async function elFetchAudioBuffer(text) {
+    if (studio.elCache[text]) return studio.elCache[text];
+    const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(studio.elVoice)}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': studio.elKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+        body: JSON.stringify({
+            text,
+            model_id: EL_MODEL,
+            voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true },
+        }),
+    });
+    if (!resp.ok) {
+        let msg = 'HTTP ' + resp.status;
+        try { const j = await resp.json(); msg = (j.detail && (j.detail.message || j.detail)) || msg; } catch (e) { /* ignore */ }
+        throw new Error(typeof msg === 'string' ? msg : 'שגיאת קול');
+    }
+    const arr = await resp.arrayBuffer();
+    ensureAudioCtx();
+    const buf = await studio.audioCtx.decodeAudioData(arr);
+    studio.elCache[text] = buf;
+    return buf;
+}
+
+// משמיע טקסט בקול הפרימיום + ליפסינק לפי עוצמת הקול
+async function playWithElevenLabs(text) {
+    try {
+        setStudioStatus('🎙️ מכין קול פרימיום...');
+        const buf = await elFetchAudioBuffer(text);
+        ensureAudioCtx();
+        const src = studio.audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(studio.analyser);
+        studio.analyser.connect(studio.audioCtx.destination);
+        startAmplitudeLipSync();
+        src.onended = () => { stopAmplitudeLipSync(); setStudioStatus('סיום 🙂'); };
+        src.start();
+        setStudioStatus('🗣️ הדמות מדברת (קול פרימיום)...');
+    } catch (err) {
+        setStudioStatus('שגיאת קול פרימיום: ' + err.message);
+    }
+}
+
+async function testElevenVoice() {
+    saveElevenConfig();
+    if (!elConfigured()) { setStudioStatus('מלאו מפתח API ומזהה קול'); return; }
+    const text = (document.getElementById('studio-text').value.trim()) || 'שלום! זה הקול החדש שלי.';
+    playWithElevenLabs(text);
+}
+
+/* ----------------------------- המרה ל-MP4 (ffmpeg.wasm, טעינה עצלה) ----------------------------- */
+let ffmpegInstance = null;
+async function ensureFfmpeg() {
+    if (ffmpegInstance) return ffmpegInstance;
+    // טעינת הספרייה מ-CDN רק כשצריך
+    if (!window.FFmpegWASM) {
+        await loadScript('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js');
+        await loadScript('https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js');
+    }
+    const { FFmpeg } = window.FFmpegWASM;
+    const ff = new FFmpeg();
+    await ff.load({
+        coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
+        wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
+    });
+    ffmpegInstance = ff;
+    return ff;
+}
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src; s.onload = resolve; s.onerror = () => reject(new Error('load failed: ' + src));
+        document.head.appendChild(s);
+    });
+}
+
+// ממיר webm ל-mp4; אם נכשל מחזיר את ה-blob המקורי
+async function convertToMp4(webmBlob) {
+    try {
+        setStudioStatus('🎞️ ממיר ל-MP4... (טעינה ראשונה עשויה לקחת רגע)');
+        const ff = await ensureFfmpeg();
+        const inName = 'in.webm', outName = 'out.mp4';
+        const data = new Uint8Array(await webmBlob.arrayBuffer());
+        await ff.writeFile(inName, data);
+        await ff.exec(['-i', inName, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', outName]);
+        const out = await ff.readFile(outName);
+        return new Blob([out.buffer], { type: 'video/mp4' });
+    } catch (err) {
+        setStudioStatus('לא הצלחתי להמיר ל-MP4 — שומר כ-WEBM (אפשר לנגן ולשתף). ' + (err.message || ''));
+        return webmBlob;
+    }
+}
+
+function wantMp4() {
+    const cb = document.getElementById('studio-mp4');
+    return cb ? cb.checked : true;
 }
 
 /* ----------------------------- עזר ----------------------------- */
