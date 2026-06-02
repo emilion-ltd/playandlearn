@@ -147,6 +147,20 @@
                         </div>
                     </div>
 
+                    <!-- שלב 1.5: כוונון פה ועיניים -->
+                    <div class="kid-step">
+                        <div class="kid-label">👄 איפה הפה והעיניים?</div>
+                        <p class="studio-text">גררו את הריבוע האדום אל הפה ואת הכחול אל העיניים. אפשר לגרור את הפינות כדי להגדיל או להקטין.</p>
+                        <div class="tool-row">
+                            <button id="studio-adjust" class="primary-btn">✋ הצג/הסתר כיוונון</button>
+                            <button id="studio-detect" class="primary-btn">🔍 זהה אוטומטית</button>
+                        </div>
+                        <div class="tool-row">
+                            <button id="studio-mark-mouth" class="primary-btn">👄 צייר פה</button>
+                            <button id="studio-mark-eyes" class="primary-btn">👀 צייר עיניים</button>
+                        </div>
+                    </div>
+
                     <!-- שלב 2: טקסט -->
                     <div class="kid-step">
                         <div class="kid-label">2️⃣ מה הדמות אומרת?</div>
@@ -180,13 +194,6 @@
                         </div>
                         <label class="check-label"><input type="checkbox" id="studio-mp4" checked> ייצוא בפורמט MP4</label>
 
-                        <div class="panel-title">🙂 סימון פנים</div>
-                        <div class="tool-row">
-                            <button id="studio-detect" class="primary-btn">🔍 זהה פנים</button>
-                            <button id="studio-mark-mouth" class="primary-btn">✏️ פה</button>
-                            <button id="studio-mark-eyes" class="primary-btn">👀 עיניים</button>
-                        </div>
-
                         <div class="panel-title">🔉 קול בסיסי (דפדפן)</div>
                         <select id="studio-voice"></select>
                         <label class="range-label">מהירות: <span id="studio-rate-value">1</span></label>
@@ -201,7 +208,7 @@
                         </div>
                         <button id="studio-add-file" class="primary-btn">📁 העלה תמונה</button>
                         <input type="file" id="studio-file-input" accept="image/*" class="hidden">
-                        <button id="studio-ai" class="primary-btn">✨ הפוך למציאות (AI)</button>
+                        <button id="studio-ai" class="primary-btn hidden">✨ הפוך למציאות (AI)</button>
                     </div>
                 </div>
             </div>
