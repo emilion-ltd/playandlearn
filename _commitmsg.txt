@@ -1,8 +1,0 @@
-fix(art): produce playable MP4 audio (AAC) on Windows/iPhone
-
-- Fallback recorder no longer writes MP4 (Chrome embeds Opus-in-MP4 which
-  Windows Media Player / iPhone can't play). Always record WEBM, then mux
-  to MP4 with AAC via ffmpeg.
-- Harden ffmpeg.wasm loader: try unpkg then jsDelivr CDN, surface real
-  load errors so MP4 conversion succeeds more reliably.
-- Cache-bust art assets to v=20260603a.
