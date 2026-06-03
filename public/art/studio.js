@@ -848,13 +848,19 @@ async function playRecorded() {
     }
 }
 
-function ensureAudioCtx() {
+async function ensureAudioCtx() {
     if (!studio.audioCtx) {
         studio.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         studio.analyser = studio.audioCtx.createAnalyser();
         studio.analyser.fftSize = 512;
     }
-    if (studio.audioCtx.state === 'suspended') studio.audioCtx.resume();
+    // חשוב: ממתינים בפועל ל-resume. אחרת בלחיצה הראשונה ההקשר עדיין מושהה,
+    // מקור האודיו לא מתקדם, onended לא נורה — וההקלטה/הייצוא נתקעים (ואז
+    // "צריך ללחוץ כמה פעמים"). resume חייב להתרחש בתוך מחוות המשתמש.
+    if (studio.audioCtx.state === 'suspended') {
+        try { await studio.audioCtx.resume(); } catch (e) { /* ignore */ }
+    }
+    return studio.audioCtx;
 }
 
 let ampRaf = null;
@@ -958,7 +964,7 @@ async function exportScenes(list) {
 const EXPORT_LEAD = 0.45, EXPORT_TRAIL = 0.35, EXPORT_GAP = 0.8;
 
 async function exportViaMux(list) {
-    ensureAudioCtx();
+    await ensureAudioCtx();
     const sr = studio.audioCtx.sampleRate;
     const mode = premiumProvider() ? 'premium' : (studio.recordedBlob ? 'rec' : 'synth');
 
@@ -1048,8 +1054,12 @@ function playBufferSilentLipsync(buf) {
         src.buffer = buf;
         src.connect(studio.analyser);
         startAmplitudeLipSync();
-        src.onended = () => { stopAmplitudeLipSync(); try { src.disconnect(); } catch (e) {} resolve(); };
+        let done = false;
+        const finish = () => { if (done) return; done = true; stopAmplitudeLipSync(); try { src.disconnect(); } catch (e) {} resolve(); };
+        src.onended = finish;
         src.start();
+        // רשת ביטחון: אם onended לא נורה (הקשר הושהה/באג דפדפן) — לא נתקעים
+        setTimeout(finish, (buf.duration + 0.6) * 1000);
     });
 }
 
@@ -1163,7 +1173,7 @@ async function exportScenesCapture(list) {
     // ערוץ אודיו להקלטה — תמיד מצרפים קול לקובץ:
     // קול פרימיום (ElevenLabs/OpenAI) > קול מוקלט > קול דמות סינתטי (תמיד עובד)
     const mode = premiumProvider() ? 'premium' : (studio.recordedBlob ? 'rec' : 'synth');
-    ensureAudioCtx();
+    await ensureAudioCtx();
     const dest = studio.audioCtx.createMediaStreamDestination();
     studio.analyser.connect(dest);
     studio.analyser.connect(studio.audioCtx.destination);
@@ -1233,8 +1243,11 @@ function playBufferThroughAnalyser(buf) {
         src.buffer = buf;
         src.connect(studio.analyser);
         startAmplitudeLipSync();
-        src.onended = () => { stopAmplitudeLipSync(); try { src.disconnect(); } catch (e) {} resolve(); };
+        let done = false;
+        const finish = () => { if (done) return; done = true; stopAmplitudeLipSync(); try { src.disconnect(); } catch (e) {} resolve(); };
+        src.onended = finish;
         src.start();
+        setTimeout(finish, (buf.duration + 0.6) * 1000);
     });
 }
 
@@ -1277,11 +1290,16 @@ function synthSpeak(text, scene) {
         lfo.start();
         osc.stop(stopAt);
         lfo.stop(stopAt);
-        osc.onended = () => {
+        let done = false;
+        const finish = () => {
+            if (done) return; done = true;
             stopAmplitudeLipSync();
             try { gain.disconnect(); } catch (e) {}
             resolve();
         };
+        osc.onended = finish;
+        // רשת ביטחון נגד תקיעה אם onended לא נורה
+        setTimeout(finish, (stopAt - ac.currentTime + 0.6) * 1000);
     });
 }
 
