@@ -1289,10 +1289,13 @@ function sleepFrames(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 /* ----------------------------- גמר וידאו + שיתוף ----------------------------- */
 function pickVideoMime() {
-    const cands = ['video/mp4;codecs=h264,aac', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+    // מקליטים תמיד ל-WEBM (אמין) וממירים ל-MP4 עם AAC דרך ffmpeg.
+    // חשוב: לא נותנים ל-MediaRecorder לכתוב MP4 — בכרום/אדג' הוא משבץ אודיו
+    // בקידוד Opus בתוך MP4, וזה לא מתנגן ב-Windows Media Player ולא ב-iPhone.
+    const cands = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
     for (const m of cands) {
         if (MediaRecorder.isTypeSupported(m)) {
-            return { mime: m, ext: m.startsWith('video/mp4') ? 'mp4' : 'webm' };
+            return { mime: m, ext: 'webm' };
         }
     }
     return { mime: 'video/webm', ext: 'webm' };
@@ -1605,30 +1608,48 @@ function applyVoicePreset(kind) {
 
 /* ----------------------------- המרה ל-MP4 (ffmpeg.wasm, טעינה עצלה) ----------------------------- */
 let ffmpegInstance = null;
+// מקורות CDN לטעינת ffmpeg.wasm — מנסים אחד אחרי השני (unpkg ואז jsDelivr)
+// כך שאם CDN אחד חסום/נכשל, ההמרה ל-MP4 עדיין תצליח.
+const FF_CDNS = [
+    {
+        umd: 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd',
+        util: 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js',
+        core: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm',
+    },
+    {
+        umd: 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd',
+        util: 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js',
+        core: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm',
+    },
+];
+
 async function ensureFfmpeg() {
     if (ffmpegInstance) return ffmpegInstance;
-    // טעינת הספרייה מ-CDN רק כשצריך
-    if (!window.FFmpegWASM) {
-        await loadScript('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js');
+    let lastErr = null;
+    for (const cdn of FF_CDNS) {
+        try {
+            if (!window.FFmpegWASM) await loadScript(`${cdn.umd}/ffmpeg.js`);
+            if (!window.FFmpegUtil) await loadScript(cdn.util);
+            const { FFmpeg } = window.FFmpegWASM;
+            const { toBlobURL } = window.FFmpegUtil;
+            // ה-Worker הפנימי (module worker) והליבה חייבים להיטען כ-blob מאותו
+            // מקור, אחרת הדפדפן חוסם יצירת Worker חוצה-מקור. ליבת ESM (single-thread)
+            // לא דורשת COOP/COEP/SharedArrayBuffer — עובד על אחסון סטטי רגיל.
+            const ff = new FFmpeg();
+            await ff.load({
+                classWorkerURL: await toBlobURL(`${cdn.umd}/814.ffmpeg.js`, 'text/javascript'),
+                coreURL: await toBlobURL(`${cdn.core}/ffmpeg-core.js`, 'text/javascript'),
+                wasmURL: await toBlobURL(`${cdn.core}/ffmpeg-core.wasm`, 'application/wasm'),
+            });
+            ffmpegInstance = ff;
+            return ff;
+        } catch (e) {
+            lastErr = e;
+            // איפוס דגלים כדי לנסות מקור הבא מחדש
+            try { delete window.FFmpegWASM; } catch (x) { /* ignore */ }
+        }
     }
-    if (!window.FFmpegUtil) {
-        await loadScript('https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js');
-    }
-    const { FFmpeg } = window.FFmpegWASM;
-    const { toBlobURL } = window.FFmpegUtil;
-    // חשוב: כשטוענים את הספרייה מ-CDN, ה-Worker הפנימי (module worker) וגם הליבה
-    // חייבים להיטען כ-blob מאותו מקור, אחרת הדפדפן חוסם יצירת Worker חוצה-מקור.
-    // משתמשים בליבת ESM (single-thread) — אין צורך ב-COOP/COEP/SharedArrayBuffer.
-    const ffBase = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd';
-    const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-    const ff = new FFmpeg();
-    await ff.load({
-        classWorkerURL: await toBlobURL(`${ffBase}/814.ffmpeg.js`, 'text/javascript'),
-        coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
-    });
-    ffmpegInstance = ff;
-    return ff;
+    throw new Error('טעינת מנוע הווידאו נכשלה: ' + (lastErr && lastErr.message ? lastErr.message : 'אין רשת/CDN חסום'));
 }
 
 function loadScript(src) {
