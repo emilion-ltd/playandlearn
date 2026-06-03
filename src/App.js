@@ -176,6 +176,7 @@ const Footer = styled.footer`
   .row { display: flex; gap: 1.2rem; justify-content: center; flex-wrap: wrap; margin-bottom: 0.6rem; }
   .row span { display: inline-flex; align-items: center; gap: 5px; font-weight: 500; }
   .copy { font-size: 0.85rem; opacity: 0.8; }
+  .rights { font-size: 0.78rem; opacity: 0.6; margin-top: 0.35rem; }
   .heart { color: ${theme.colors.error}; }
 `;
 
@@ -296,6 +297,7 @@ function AppInner() {
           <div className="copy">
             נבנה באהבה <span className="heart">♥</span> לילדים סקרנים · עולם הלמידה {new Date().getFullYear()}
           </div>
+          <div className="rights">זכויות יוצרים © רומי &amp; עילי 2024</div>
         </Footer>
       </Shell>
 
