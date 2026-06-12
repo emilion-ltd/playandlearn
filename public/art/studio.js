@@ -15,6 +15,11 @@ const studio = {
     eyes: null,             // {x,y,w,h} — עיניים דמות 1
     mouth2: null,           // {x,y,w,h} — פה דמות 2 (שיחה)
     eyes2: null,            // {x,y,w,h} — עיניים דמות 2
+    mouthStyle: 0,          // אינדקס סגנון פה דמות 1 (MOUTH_STYLES)
+    mouthStyle2: 0,         // סגנון פה דמות 2
+    eyeStyle: 0,            // אינדקס סגנון עיניים דמות 1 (EYE_STYLES)
+    eyeStyle2: 0,           // סגנון עיניים דמות 2
+    styleBtns: [],          // כפתורי החלפת סגנון על הקנבס (מחושב כל פריים)
     activeWho: 1,           // איזו דמות מדברת כרגע (1/2)
     dialog: [],             // [{ who:1|2, text }] — תסריט שיחה
     marking: null,          // 'mouth' | 'eyes' | 'mouth2' | 'eyes2' | null
@@ -187,6 +192,10 @@ function makeScene(src, text) {
         text: text || 'שלום! אני הדמות שציירתם.',
         mouth: null,
         eyes: null,
+        mouthStyle: 0,
+        eyeStyle: 0,
+        mouthStyle2: 0,
+        eyeStyle2: 0,
         rate: 1,
         pitch: 1.2,
         voiceIndex: null,
@@ -219,6 +228,10 @@ async function loadSceneIntoStudio(i, autodetect) {
     // פה/עיניים: אם נשמרו — נשתמש בהם, אחרת זיהוי אוטומטי
     studio.mouth2 = scene.mouth2 || null;
     studio.eyes2 = scene.eyes2 || null;
+    studio.mouthStyle = scene.mouthStyle || 0;
+    studio.eyeStyle = scene.eyeStyle || 0;
+    studio.mouthStyle2 = scene.mouthStyle2 || 0;
+    studio.eyeStyle2 = scene.eyeStyle2 || 0;
     studio.activeWho = 1;
     if (scene.mouth) {
         studio.mouth = scene.mouth;
@@ -252,6 +265,10 @@ function saveActiveToScene() {
     s.eyes = studio.eyes;
     s.mouth2 = studio.mouth2;
     s.eyes2 = studio.eyes2;
+    s.mouthStyle = studio.mouthStyle;
+    s.eyeStyle = studio.eyeStyle;
+    s.mouthStyle2 = studio.mouthStyle2;
+    s.eyeStyle2 = studio.eyeStyle2;
     s.rate = Number(document.getElementById('studio-rate').value);
     s.pitch = Number(document.getElementById('studio-pitch').value);
     s.voiceIndex = document.getElementById('studio-voice').value;
@@ -403,6 +420,11 @@ function bindStudioPointer() {
         const p = pos(e);
         // מצב ציור ריבוע חדש (פה/עיניים)
         if (studio.marking) { e.preventDefault(); studio.dragStart = p; return; }
+        // לחיצה על כפתור החלפת סגנון (העיגול הקטן ליד הריבוע)
+        if (studio.editMode && studio.styleBtns && studio.styleBtns.length) {
+            const btn = studio.styleBtns.find((b) => Math.hypot(p.x - b.x, p.y - b.y) <= b.r * 1.25);
+            if (btn) { e.preventDefault(); cycleStyle(btn.kind); return; }
+        }
         // מצב כיוונון: הזזה/שינוי-גודל של ריבוע קיים
         if (studio.editMode) {
             const hit = hitTest(p);
@@ -625,17 +647,30 @@ function renderFrame(elapsed) {
     // צורת פה סגורה לדמות שאינה מדברת כרגע
     const SIL_SHAPE = { open: 0.03, wide: 0.45, round: 0, teeth: 0, tongue: 0 };
     const hasTwo = !!studio.mouth2;
-    if (studio.mouth) drawMouth(ctx, studio.mouth, (!hasTwo || studio.activeWho === 1) ? s : SIL_SHAPE);
-    if (studio.mouth2) drawMouth(ctx, studio.mouth2, studio.activeWho === 2 ? s : SIL_SHAPE);
-    if (studio.eyes && studio.blink > 0) drawBlink(ctx, studio.eyes);
-    if (studio.eyes2 && studio.blink > 0) drawBlink(ctx, studio.eyes2);
+    const s1 = (!hasTwo || studio.activeWho === 1) ? s : SIL_SHAPE;
+    const s2 = studio.activeWho === 2 ? s : SIL_SHAPE;
+    if (studio.mouth) drawMouthStyled(studio.mouthStyle, ctx, studio.mouth, s1, elapsed);
+    if (studio.mouth2) drawMouthStyled(studio.mouthStyle2, ctx, studio.mouth2, s2, elapsed);
+    if (studio.eyes) drawEyesStyled(studio.eyeStyle, ctx, studio.eyes, s1, studio.blink, elapsed);
+    if (studio.eyes2) drawEyesStyled(studio.eyeStyle2, ctx, studio.eyes2, s2, studio.blink, elapsed);
     if (editing) drawEditHandles(ctx);
     ctx.restore();
+}
+
+function drawMouthStyled(styleIdx, ctx, m, s, t) {
+    const st = MOUTH_STYLES[styleIdx] || MOUTH_STYLES[0];
+    st.draw(ctx, m, s, t);
+}
+
+function drawEyesStyled(styleIdx, ctx, e, s, blink, t) {
+    const st = EYE_STYLES[styleIdx] || EYE_STYLES[0];
+    st.draw(ctx, e, s, blink, t);
 }
 
 // ציור ריבועי כיוונון עם ידיות פינה (רק במצב עריכה, לא בייצוא)
 function drawEditHandles(ctx) {
     const hs = handleSize();
+    studio.styleBtns = [];
     const draw = (r, color, label) => {
         if (!r) return;
         ctx.save();
@@ -656,52 +691,92 @@ function drawEditHandles(ctx) {
         ctx.fillText(label, r.x + r.w / 2, r.y - hs * 0.4);
         ctx.restore();
     };
+    // כפתור עגול קטן ליד הריבוע — לחיצה מחליפה את סגנון הפה/העיניים
+    const badge = (r, kind, icon, color) => {
+        if (!r) return;
+        const br = Math.max(13, hs * 0.8);
+        const bx = Math.min(studio.canvas.width - br - 2, Math.max(br + 2, r.x + r.w + br * 1.1));
+        const by = Math.min(studio.canvas.height - br - 2, Math.max(br + 2, r.y + r.h / 2));
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(bx, by, br, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = color;
+        ctx.stroke();
+        ctx.font = `${Math.round(br * 1.15)}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(icon, bx, by + 1);
+        ctx.restore();
+        studio.styleBtns.push({ x: bx, y: by, r: br, kind });
+    };
     draw(studio.mouth, 'rgba(255,70,70,0.95)', studio.mouth2 ? '👄1' : '👄');
     draw(studio.mouth2, 'rgba(255,150,40,0.95)', '👄2');
     draw(studio.eyes, 'rgba(70,140,255,0.95)', studio.eyes2 ? '👀1' : '👀');
     draw(studio.eyes2, 'rgba(40,200,200,0.95)', '👀2');
+    badge(studio.mouth, 'mouth', (MOUTH_STYLES[studio.mouthStyle] || MOUTH_STYLES[0]).icon, 'rgba(255,70,70,0.95)');
+    badge(studio.mouth2, 'mouth2', (MOUTH_STYLES[studio.mouthStyle2] || MOUTH_STYLES[0]).icon, 'rgba(255,150,40,0.95)');
+    badge(studio.eyes, 'eyes', (EYE_STYLES[studio.eyeStyle] || EYE_STYLES[0]).icon, 'rgba(70,140,255,0.95)');
+    badge(studio.eyes2, 'eyes2', (EYE_STYLES[studio.eyeStyle2] || EYE_STYLES[0]).icon, 'rgba(40,200,200,0.95)');
 }
 
-/* ציור פה לפי צורת הברה: open=פתיחה אנכית, wide=רוחב, round=עיגול,
-   teeth=שיניים גלויות, tongue=לשון */
-function drawMouth(ctx, m, s) {
-    const cx = m.x + m.w / 2;
-    const cy = m.y + m.h / 2;
+// החלפת סגנון (פה/עיניים) בלחיצה על הכפתור העגול שליד הריבוע
+function cycleStyle(kind) {
+    if (kind === 'mouth') {
+        studio.mouthStyle = ((studio.mouthStyle || 0) + 1) % MOUTH_STYLES.length;
+        setStudioStatus('👄 סגנון פה: ' + MOUTH_STYLES[studio.mouthStyle].name + ' ' + MOUTH_STYLES[studio.mouthStyle].icon);
+    } else if (kind === 'mouth2') {
+        studio.mouthStyle2 = ((studio.mouthStyle2 || 0) + 1) % MOUTH_STYLES.length;
+        setStudioStatus('👄 סגנון פה דמות 2: ' + MOUTH_STYLES[studio.mouthStyle2].name + ' ' + MOUTH_STYLES[studio.mouthStyle2].icon);
+    } else if (kind === 'eyes') {
+        studio.eyeStyle = ((studio.eyeStyle || 0) + 1) % EYE_STYLES.length;
+        setStudioStatus('👀 סגנון עיניים: ' + EYE_STYLES[studio.eyeStyle].name + ' ' + EYE_STYLES[studio.eyeStyle].icon);
+    } else {
+        studio.eyeStyle2 = ((studio.eyeStyle2 || 0) + 1) % EYE_STYLES.length;
+        setStudioStatus('👀 סגנון עיניים דמות 2: ' + EYE_STYLES[studio.eyeStyle2].name + ' ' + EYE_STYLES[studio.eyeStyle2].icon);
+    }
+    saveActiveToScene();
+}
 
-    // כיסוי הפה המקורי (תמיד ברוחב מלא כדי להסתיר אותו)
-    ctx.save();
+/* =============================== סגנונות פה ===============================
+   כל סגנון מקבל (ctx, m, s, t): m=מלבן הפה, s=צורת ההברה
+   (open/wide/round/teeth/tongue), t=זמן שחלף (לאנימציות). */
+
+// כיסוי הפה המקורי שבציור (משותף לכל הסגנונות)
+function mouthCover(ctx, m) {
     ctx.fillStyle = 'rgba(255,233,223,0.92)';
     ctx.beginPath();
-    ctx.ellipse(cx, cy, (m.w / 2) * 1.12, (m.h / 2) * 1.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(m.x + m.w / 2, m.y + m.h / 2, (m.w / 2) * 1.12, (m.h / 2) * 1.2, 0, 0, Math.PI * 2);
     ctx.fill();
+}
 
+// 0) קלאסי — אליפסה שנפתחת ונסגרת (הסגנון המקורי)
+function drawMouthClassic(ctx, m, s) {
+    const cx = m.x + m.w / 2;
+    const cy = m.y + m.h / 2;
+    ctx.save();
+    mouthCover(ctx, m);
     const wideFactor = (0.55 + s.wide * 0.6) * (1 - s.round * 0.5);
     const rx = Math.max(3, (m.w / 2) * wideFactor);
     const ry = Math.max(2, (m.h / 2) * (0.12 + s.open * 1.05));
-
-    // חלל הפה
     ctx.fillStyle = '#7a1f1f';
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.fill();
-
-    // שיניים עליונות (F/V, חיוך רחב)
     if (s.teeth > 0.12 && ry > 4) {
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.ellipse(cx, cy - ry * 0.55, rx * 0.92, ry * 0.45, 0, 0, Math.PI * 2);
         ctx.fill();
     }
-
-    // לשון
     if (s.open > 0.3 && s.tongue > 0.2) {
         ctx.fillStyle = '#e06666';
         ctx.beginPath();
         ctx.ellipse(cx, cy + ry * 0.35, rx * 0.55, ry * 0.5, 0, 0, Math.PI * 2);
         ctx.fill();
     }
-
-    // קו שפתיים עדין למסגור
     ctx.strokeStyle = 'rgba(150,70,70,0.5)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -709,6 +784,193 @@ function drawMouth(ctx, m, s) {
     ctx.stroke();
     ctx.restore();
 }
+
+// 1) חיוך — פה מחייך שנפתח כלפי מטה כשמדברים
+function drawMouthSmile(ctx, m, s) {
+    const cx = m.x + m.w / 2;
+    const cy = m.y + m.h * 0.4;
+    ctx.save();
+    mouthCover(ctx, m);
+    const w = m.w * (0.55 + s.wide * 0.35);
+    const openH = Math.max(m.h * 0.12, m.h * (0.1 + s.open * 0.95));
+    ctx.fillStyle = '#7a1f1f';
+    ctx.beginPath();
+    ctx.moveTo(cx - w / 2, cy);
+    ctx.quadraticCurveTo(cx, cy - openH * 0.25, cx + w / 2, cy);
+    ctx.quadraticCurveTo(cx + w * 0.35, cy + openH, cx, cy + openH * 1.05);
+    ctx.quadraticCurveTo(cx - w * 0.35, cy + openH, cx - w / 2, cy);
+    ctx.fill();
+    // שיניים עליונות בחיוך פתוח
+    if (openH > m.h * 0.3) {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(cx - w * 0.4, cy + 1);
+        ctx.quadraticCurveTo(cx, cy - openH * 0.1, cx + w * 0.4, cy + 1);
+        ctx.quadraticCurveTo(cx, cy + openH * 0.35, cx - w * 0.4, cy + 1);
+        ctx.fill();
+    }
+    ctx.strokeStyle = '#9c4a3a';
+    ctx.lineWidth = Math.max(2, m.w * 0.02);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - w / 2, cy);
+    ctx.quadraticCurveTo(cx, cy - openH * 0.25, cx + w / 2, cy);
+    ctx.stroke();
+    ctx.restore();
+}
+
+// 2) מצויר — פה קומיקס עם קו מתאר עבה ולשון גדולה
+function drawMouthCartoon(ctx, m, s, t) {
+    const cx = m.x + m.w / 2;
+    const cy = m.y + m.h / 2;
+    ctx.save();
+    mouthCover(ctx, m);
+    const rx = Math.max(4, (m.w / 2) * (0.5 + s.wide * 0.5));
+    const ry = Math.max(3, (m.h / 2) * (0.15 + s.open * 1.1));
+    ctx.fillStyle = '#5e1212';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // לשון גדולה ומתנדנדת
+    if (s.open > 0.18) {
+        const wob = Math.sin(t / 120) * ry * 0.08;
+        ctx.fillStyle = '#ef6a6a';
+        ctx.beginPath();
+        ctx.ellipse(cx + wob, cy + ry * 0.45, rx * 0.62, ry * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = Math.max(3, m.w * 0.045);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+}
+
+// 3) שפתיים — שפתיים אדומות (עליונה+תחתונה) שנפתחות
+function drawMouthLips(ctx, m, s) {
+    const cx = m.x + m.w / 2;
+    const cy = m.y + m.h / 2;
+    ctx.save();
+    mouthCover(ctx, m);
+    const rx = Math.max(4, (m.w / 2) * (0.55 + s.wide * 0.4));
+    const gap = (m.h / 2) * (0.05 + s.open * 0.9);
+    const lipH = Math.max(3, m.h * 0.22);
+    // חלל פה כשהשפתיים נפתחות
+    if (gap > lipH * 0.4) {
+        ctx.fillStyle = '#6e1a1a';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx * 0.9, gap, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    // שפה עליונה (שני קימורים)
+    ctx.fillStyle = '#d2384a';
+    ctx.beginPath();
+    ctx.moveTo(cx - rx, cy - gap * 0.4);
+    ctx.quadraticCurveTo(cx - rx * 0.5, cy - gap - lipH, cx - rx * 0.08, cy - gap * 0.75 - lipH * 0.45);
+    ctx.quadraticCurveTo(cx, cy - gap * 0.6 - lipH * 0.3, cx + rx * 0.08, cy - gap * 0.75 - lipH * 0.45);
+    ctx.quadraticCurveTo(cx + rx * 0.5, cy - gap - lipH, cx + rx, cy - gap * 0.4);
+    ctx.quadraticCurveTo(cx, cy - gap * 0.15, cx - rx, cy - gap * 0.4);
+    ctx.fill();
+    // שפה תחתונה (מלאה יותר)
+    ctx.fillStyle = '#e0495c';
+    ctx.beginPath();
+    ctx.moveTo(cx - rx, cy + gap * 0.35);
+    ctx.quadraticCurveTo(cx, cy + gap + lipH * 1.25, cx + rx, cy + gap * 0.35);
+    ctx.quadraticCurveTo(cx, cy + gap * 0.7, cx - rx, cy + gap * 0.35);
+    ctx.fill();
+    ctx.restore();
+}
+
+// 4) מפלצת — פה רחב עם שיניים משולשות
+function drawMouthMonster(ctx, m, s) {
+    const cx = m.x + m.w / 2;
+    const cy = m.y + m.h / 2;
+    ctx.save();
+    mouthCover(ctx, m);
+    const w = m.w * (0.6 + s.wide * 0.36);
+    const h = Math.max(m.h * 0.18, m.h * (0.12 + s.open * 1.0));
+    const x0 = cx - w / 2, y0 = cy - h / 2;
+    ctx.fillStyle = '#3d0f3d';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x0, y0, w, h, Math.min(10, h * 0.4));
+    else ctx.rect(x0, y0, w, h);
+    ctx.fill();
+    // שיניים משולשות — שורה עליונה יורדת ושורה תחתונה עולה
+    const nTeeth = 5;
+    const tw = w / nTeeth;
+    const th = Math.min(h * 0.5, m.h * 0.35);
+    ctx.fillStyle = '#fffef0';
+    for (let i = 0; i < nTeeth; i++) {
+        const tx = x0 + i * tw;
+        ctx.beginPath();
+        ctx.moveTo(tx, y0);
+        ctx.lineTo(tx + tw, y0);
+        ctx.lineTo(tx + tw / 2, y0 + th);
+        ctx.closePath();
+        ctx.fill();
+    }
+    if (h > th * 1.5) {
+        for (let i = 0; i < nTeeth - 1; i++) {
+            const tx = x0 + (i + 0.5) * tw;
+            ctx.beginPath();
+            ctx.moveTo(tx, y0 + h);
+            ctx.lineTo(tx + tw, y0 + h);
+            ctx.lineTo(tx + tw / 2, y0 + h - th * 0.8);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+    ctx.strokeStyle = '#2a082a';
+    ctx.lineWidth = Math.max(2, m.w * 0.03);
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x0, y0, w, h, Math.min(10, h * 0.4));
+    else ctx.rect(x0, y0, w, h);
+    ctx.stroke();
+    ctx.restore();
+}
+
+// 5) רובוט — פה דיגיטלי עם פסי אקולייזר שקופצים לפי הדיבור
+function drawMouthRobot(ctx, m, s, t) {
+    const cx = m.x + m.w / 2;
+    const cy = m.y + m.h / 2;
+    ctx.save();
+    mouthCover(ctx, m);
+    const w = m.w * 0.86, h = Math.max(m.h * 0.4, m.h * (0.3 + s.open * 0.6));
+    const x0 = cx - w / 2, y0 = cy - h / 2;
+    ctx.fillStyle = '#10141f';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x0, y0, w, h, 6);
+    else ctx.rect(x0, y0, w, h);
+    ctx.fill();
+    // פסי אקולייזר ירוקים
+    const bars = 7;
+    const bw = w / (bars * 1.6);
+    ctx.fillStyle = '#37e567';
+    for (let i = 0; i < bars; i++) {
+        const phase = Math.sin(t / 90 + i * 1.1);
+        const amp = 0.15 + s.open * 0.85 * (0.55 + 0.45 * phase);
+        const bh = Math.max(2, (h * 0.78) * amp);
+        const bx = x0 + w * 0.08 + i * (w * 0.84 / bars);
+        ctx.fillRect(bx, cy - bh / 2, bw, bh);
+    }
+    ctx.strokeStyle = '#5a6478';
+    ctx.lineWidth = Math.max(2, m.w * 0.025);
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x0, y0, w, h, 6);
+    else ctx.rect(x0, y0, w, h);
+    ctx.stroke();
+    ctx.restore();
+}
+
+const MOUTH_STYLES = [
+    { name: 'קלאסי', icon: '👄', draw: drawMouthClassic },
+    { name: 'חיוך', icon: '🙂', draw: drawMouthSmile },
+    { name: 'מצויר', icon: '😜', draw: drawMouthCartoon },
+    { name: 'שפתיים', icon: '💋', draw: drawMouthLips },
+    { name: 'מפלצת', icon: '🧟', draw: drawMouthMonster },
+    { name: 'רובוט', icon: '🤖', draw: drawMouthRobot },
+];
 
 /* ----------------------------- מנוע הברות (Visemes) ----------------------------- */
 const VISEMES = {
@@ -771,17 +1033,186 @@ function resyncVisemes(charIndex) {
     if (typeof charIndex === 'number' && charIndex >= 0) visIndex = Math.min(visArr.length - 1, charIndex);
 }
 
-function drawBlink(ctx, e) {
+/* =============================== סגנונות עיניים ===============================
+   כל סגנון מצייר שתי עיניים נפרדות (ימין ושמאל) בתוך מלבן העיניים,
+   ומסונכרן עם הדיבור (s.open), מצמוץ (blink) וזמן (t). */
+
+// מיקום שתי העיניים בתוך המלבן: מרכז עין שמאל/ימין + רדיוס
+function eyeGeo(e) {
+    return {
+        lx: e.x + e.w * 0.26,
+        rx: e.x + e.w * 0.74,
+        cy: e.y + e.h / 2,
+        r: Math.max(4, Math.min(e.w * 0.17, e.h * 0.62)),
+    };
+}
+
+// עפעף סגור (משותף לסגנונות המצוירים)
+function drawClosedLid(ctx, x, cy, r) {
+    ctx.fillStyle = 'rgba(255,233,223,0.95)';
+    ctx.beginPath();
+    ctx.arc(x, cy, r * 1.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#3a2a22';
+    ctx.lineWidth = Math.max(2, r * 0.16);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.85, cy);
+    ctx.quadraticCurveTo(x, cy + r * 0.35, x + r * 0.85, cy);
+    ctx.stroke();
+}
+
+// 0) טבעי — שומר על העיניים שבציור; רק מצמוץ עדין, כל עין בנפרד
+function drawEyesNatural(ctx, e, s, blink) {
+    if (blink <= 0) return;
+    const g = eyeGeo(e);
     ctx.save();
     ctx.strokeStyle = '#222';
     ctx.lineWidth = Math.max(2, e.h * 0.15);
     ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(e.x, e.y + e.h / 2);
-    ctx.lineTo(e.x + e.w, e.y + e.h / 2);
-    ctx.stroke();
+    [g.lx, g.rx].forEach((x) => {
+        ctx.beginPath();
+        ctx.moveTo(x - g.r, g.cy);
+        ctx.lineTo(x + g.r, g.cy);
+        ctx.stroke();
+    });
     ctx.restore();
 }
+
+// 1) עגולות — עיניים מצוירות קלאסיות: לבן + אישון שמגיב לדיבור
+function drawEyesRound(ctx, e, s, blink) {
+    const g = eyeGeo(e);
+    ctx.save();
+    [g.lx, g.rx].forEach((x) => {
+        if (blink > 0) { drawClosedLid(ctx, x, g.cy, g.r); return; }
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(x, g.cy, g.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = Math.max(1.5, g.r * 0.12);
+        ctx.stroke();
+        // אישון גדל מעט כשמדברים (התרגשות)
+        const pr = g.r * (0.38 + s.open * 0.14);
+        ctx.fillStyle = '#1b1b1b';
+        ctx.beginPath();
+        ctx.arc(x, g.cy + g.r * 0.08, pr, 0, Math.PI * 2);
+        ctx.fill();
+        // נצנוץ
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.beginPath();
+        ctx.arc(x - pr * 0.35, g.cy - pr * 0.3, pr * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.restore();
+}
+
+// 2) גדולות — עיניים אנימה עם קשתית צבעונית וגבות שקופצות עם הדיבור
+function drawEyesBig(ctx, e, s, blink) {
+    const g = eyeGeo(e);
+    const r = g.r * 1.15;
+    ctx.save();
+    [g.lx, g.rx].forEach((x) => {
+        // גבה — מתרוממת כשהפה נפתח (הבעה נלהבת)
+        const lift = s.open * r * 0.55;
+        ctx.strokeStyle = '#4a3326';
+        ctx.lineWidth = Math.max(2.5, r * 0.18);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x - r * 0.85, g.cy - r * 1.25 - lift * 0.6);
+        ctx.quadraticCurveTo(x, g.cy - r * 1.7 - lift, x + r * 0.85, g.cy - r * 1.25 - lift * 0.6);
+        ctx.stroke();
+        if (blink > 0) { drawClosedLid(ctx, x, g.cy, r); return; }
+        // גלגל העין
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.ellipse(x, g.cy, r, r * 1.12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#2b2b2b';
+        ctx.lineWidth = Math.max(1.5, r * 0.1);
+        ctx.stroke();
+        // קשתית + אישון
+        const iy = g.cy + r * 0.1;
+        ctx.fillStyle = '#3f7ad6';
+        ctx.beginPath();
+        ctx.arc(x, iy, r * 0.58, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#101010';
+        ctx.beginPath();
+        ctx.arc(x, iy, r * (0.27 + s.open * 0.08), 0, Math.PI * 2);
+        ctx.fill();
+        // שני נצנוצים
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.beginPath();
+        ctx.arc(x - r * 0.22, iy - r * 0.22, r * 0.16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x + r * 0.18, iy + r * 0.18, r * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.restore();
+}
+
+// 3) נקודות — עיניים נקודה חמודות שקופצות עם הדיבור
+function drawEyesDots(ctx, e, s, blink) {
+    const g = eyeGeo(e);
+    const bounce = s.open * g.r * 0.25;
+    ctx.save();
+    [g.lx, g.rx].forEach((x) => {
+        ctx.fillStyle = '#1b1b1b';
+        ctx.beginPath();
+        if (blink > 0) {
+            // בעת מצמוץ הנקודה נמעכת לפס
+            ctx.ellipse(x, g.cy, g.r * 0.55, g.r * 0.1, 0, 0, Math.PI * 2);
+        } else {
+            ctx.arc(x, g.cy - bounce, g.r * 0.45, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        if (blink <= 0) {
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.beginPath();
+            ctx.arc(x - g.r * 0.15, g.cy - bounce - g.r * 0.15, g.r * 0.13, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#1b1b1b';
+        }
+    });
+    ctx.restore();
+}
+
+// 4) מצחיקות — עיני גוגלי: האישון מסתובב ורוטט כשהדמות מדברת
+function drawEyesGoogly(ctx, e, s, blink, t) {
+    const g = eyeGeo(e);
+    ctx.save();
+    [g.lx, g.rx].forEach((x, idx) => {
+        if (blink > 0) { drawClosedLid(ctx, x, g.cy, g.r); return; }
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(x, g.cy, g.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = Math.max(2, g.r * 0.14);
+        ctx.stroke();
+        // האישון נע במעגל — מהר כשמדברים, לאט במנוחה
+        const speed = 0.002 + s.open * 0.012;
+        const ang = t * speed + (idx === 0 ? 0 : Math.PI * 0.7);
+        const dist = g.r * (0.2 + s.open * 0.3);
+        const px = x + Math.cos(ang) * dist;
+        const py = g.cy + Math.sin(ang) * dist;
+        ctx.fillStyle = '#111';
+        ctx.beginPath();
+        ctx.arc(px, py, g.r * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.restore();
+}
+
+const EYE_STYLES = [
+    { name: 'טבעי (כמו בציור)', icon: '✏️', draw: drawEyesNatural },
+    { name: 'עגולות', icon: '⚪', draw: drawEyesRound },
+    { name: 'גדולות', icon: '👁️', draw: drawEyesBig },
+    { name: 'נקודות', icon: '🔘', draw: drawEyesDots },
+    { name: 'מצחיקות (גוגלי)', icon: '🤪', draw: drawEyesGoogly },
+];
 
 /* ----------------------------- דיבור (TTS) + ליפסינק ----------------------------- */
 function playTalk() {
@@ -1007,6 +1438,10 @@ async function exportViaMux(list) {
         studio.eyes = scene.eyes || null;
         studio.mouth2 = scene.mouth2 || null;
         studio.eyes2 = scene.eyes2 || null;
+        studio.mouthStyle = scene.mouthStyle || 0;
+        studio.eyeStyle = scene.eyeStyle || 0;
+        studio.mouthStyle2 = scene.mouthStyle2 || 0;
+        studio.eyeStyle2 = scene.eyeStyle2 || 0;
         studio.activeWho = scene.who || 1;
         await sleepFrames(EXPORT_LEAD * 1000);
         if (segs[i]) await playBufferSilentLipsync(segs[i]);
@@ -1222,6 +1657,10 @@ async function exportScenesCapture(list) {
             studio.eyes = scene.eyes || null;
             studio.mouth2 = scene.mouth2 || null;
             studio.eyes2 = scene.eyes2 || null;
+            studio.mouthStyle = scene.mouthStyle || 0;
+            studio.eyeStyle = scene.eyeStyle || 0;
+            studio.mouthStyle2 = scene.mouthStyle2 || 0;
+            studio.eyeStyle2 = scene.eyeStyle2 || 0;
             studio.activeWho = scene.who || 1;
             await sleepFrames(450);
             await playSceneAudio(scene, mode);   // הקול נכנס לקובץ + מסנכרן את הפה
@@ -1804,6 +2243,10 @@ function buildDialogScenes() {
         mouth2: studio.mouth2,
         eyes: studio.eyes,
         eyes2: studio.eyes2,
+        mouthStyle: studio.mouthStyle,
+        eyeStyle: studio.eyeStyle,
+        mouthStyle2: studio.mouthStyle2,
+        eyeStyle2: studio.eyeStyle2,
         who: line.who,
         rate,
         // קול שונה מעט לכל דמות (גובה) כדי שיישמעו כשתי דמויות
