@@ -211,8 +211,11 @@ function loadStudioImage(src) {
             studio.activeSrc = src;
             const maxW = 520, maxH = 520;
             const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-            studio.canvas.width = Math.round(img.width * scale);
-            studio.canvas.height = Math.round(img.height * scale);
+            const w = Math.round(img.width * scale);
+            const h = Math.round(img.height * scale);
+            // שינוי גודל קנבס מוחק אותו (פריים שחור בהקלטה!) — משנים רק אם באמת השתנה
+            if (studio.canvas.width !== w) studio.canvas.width = w;
+            if (studio.canvas.height !== h) studio.canvas.height = h;
             resolve(img);
         };
         img.src = src;
@@ -1403,6 +1406,20 @@ async function exportScenes(list) {
 
 const EXPORT_LEAD = 0.45, EXPORT_TRAIL = 0.35, EXPORT_GAP = 0.8;
 
+// טוען את תמונת הסצנה ומחיל פה/עיניים/סגנונות — משותף לשני נתיבי הייצוא
+async function applySceneToStudio(scene) {
+    await loadStudioImage(scene.src);
+    studio.mouth = scene.mouth || { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
+    studio.eyes = scene.eyes || null;
+    studio.mouth2 = scene.mouth2 || null;
+    studio.eyes2 = scene.eyes2 || null;
+    studio.mouthStyle = scene.mouthStyle || 0;
+    studio.eyeStyle = scene.eyeStyle || 0;
+    studio.mouthStyle2 = scene.mouthStyle2 || 0;
+    studio.eyeStyle2 = scene.eyeStyle2 || 0;
+    studio.activeWho = scene.who || 1;
+}
+
 async function exportViaMux(list) {
     await ensureAudioCtx();
     const sr = studio.audioCtx.sampleRate;
@@ -1422,6 +1439,11 @@ async function exportViaMux(list) {
     studio.analyser.connect(muteGain);
     muteGain.connect(studio.audioCtx.destination);
 
+    // חשוב: טוענים ומציירים את הסצנה הראשונה *לפני* תחילת ההקלטה —
+    // אחרת הפריימים הראשונים שחורים, וזו התמונה הממוזערת שוואטסאפ מציג.
+    await applySceneToStudio(list[0]);
+    await sleepFrames(120);
+
     const mime = pickVideoOnlyMime();
     const videoStream = studio.canvas.captureStream(30);
     studio.videoChunks = [];
@@ -1433,16 +1455,7 @@ async function exportViaMux(list) {
     for (let i = 0; i < list.length; i++) {
         const scene = list[i];
         setStudioStatus(`🎬 מקליט סצנה ${i + 1}/${list.length}...`);
-        await loadStudioImage(scene.src);
-        studio.mouth = scene.mouth || { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
-        studio.eyes = scene.eyes || null;
-        studio.mouth2 = scene.mouth2 || null;
-        studio.eyes2 = scene.eyes2 || null;
-        studio.mouthStyle = scene.mouthStyle || 0;
-        studio.eyeStyle = scene.eyeStyle || 0;
-        studio.mouthStyle2 = scene.mouthStyle2 || 0;
-        studio.eyeStyle2 = scene.eyeStyle2 || 0;
-        studio.activeWho = scene.who || 1;
+        await applySceneToStudio(scene);
         await sleepFrames(EXPORT_LEAD * 1000);
         if (segs[i]) await playBufferSilentLipsync(segs[i]);
         else await sleepFrames(EXPORT_GAP * 1000);
@@ -1613,7 +1626,8 @@ async function muxToMp4(videoBlob, wavBlob) {
     const vCodec = inName === 'v.mp4'
         ? ['-c:v', 'copy']
         : ['-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p'];
-    const code = await ff.exec(['-i', inName, '-i', 'a.wav', ...vCodec, '-c:a', 'aac', '-shortest', 'out.mp4']);
+    // faststart מזיז את המטא-דאטה לתחילת הקובץ — חיוני לתצוגה מקדימה בוואטסאפ/רשתות
+    const code = await ff.exec(['-i', inName, '-i', 'a.wav', ...vCodec, '-c:a', 'aac', '-shortest', '-movflags', '+faststart', 'out.mp4']);
     if (code !== 0) throw new Error('מיזוג ffmpeg נכשל (code ' + code + ')');
     const out = await ff.readFile('out.mp4');
     if (!out || out.length === 0) throw new Error('הפלט של ffmpeg ריק');
@@ -1638,6 +1652,10 @@ async function exportScenesCapture(list) {
     studio.analyser.connect(dest);
 
     try {
+        // ציור הסצנה הראשונה לפני ההקלטה — מונע פריים פתיחה שחור (תמונה ממוזערת)
+        await applySceneToStudio(list[0]);
+        await sleepFrames(120);
+
         const videoStream = studio.canvas.captureStream(30);
         const tracks = [...videoStream.getVideoTracks(), ...dest.stream.getAudioTracks()];
         const mixed = new MediaStream(tracks);
@@ -1652,16 +1670,7 @@ async function exportScenesCapture(list) {
         for (let i = 0; i < list.length; i++) {
             const scene = list[i];
             setStudioStatus(`🎬 מקליט סצנה ${i + 1}/${list.length}...`);
-            await loadStudioImage(scene.src);
-            studio.mouth = scene.mouth || { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
-            studio.eyes = scene.eyes || null;
-            studio.mouth2 = scene.mouth2 || null;
-            studio.eyes2 = scene.eyes2 || null;
-            studio.mouthStyle = scene.mouthStyle || 0;
-            studio.eyeStyle = scene.eyeStyle || 0;
-            studio.mouthStyle2 = scene.mouthStyle2 || 0;
-            studio.eyeStyle2 = scene.eyeStyle2 || 0;
-            studio.activeWho = scene.who || 1;
+            await applySceneToStudio(scene);
             await sleepFrames(450);
             await playSceneAudio(scene, mode);   // הקול נכנס לקובץ + מסנכרן את הפה
             await sleepFrames(350);
@@ -2158,7 +2167,8 @@ async function convertToMp4(webmBlob) {
         const data = new Uint8Array(await webmBlob.arrayBuffer());
         await ff.writeFile(inName, data);
         // scale מעגל לממדים זוגיים — חובה ל-libx264 (קנבס רספונסיבי יוצא אי-זוגי)
-        await ff.exec(['-i', inName, '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', outName]);
+        // faststart — מטא-דאטה בתחילת הקובץ לתצוגה מקדימה בוואטסאפ
+        await ff.exec(['-i', inName, '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', outName]);
         const out = await ff.readFile(outName);
         return new Blob([out.buffer], { type: 'video/mp4' });
     } catch (err) {
