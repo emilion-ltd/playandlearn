@@ -495,45 +495,23 @@ function getExternalPlayer() {
 }
 
 function initPlayer() {
+    // אין טופס התחברות במשחק — השחקן מגיע תמיד מהפלטפורמה (פרמטר ?player=
+    // שההאדר מעביר ל-iframe). כך הציורים והשיאים משויכים לאותו משתמש שמוצג למעלה.
     const external = getExternalPlayer();
     try { state.externalEmoji = new URLSearchParams(window.location.search).get('emoji') || ''; } catch (e) { state.externalEmoji = ''; }
-    if (external) {
-        // משתמשים בשם מהפלטפורמה ומסתירים את טופס ההתחברות הכפול
-        if (!state.players[external]) state.players[external] = { highScore: 0, savedDrawings: [] };
-        state.currentPlayer = external;
-        localStorage.setItem('currentPlayer', external);
-        persistPlayers();
-        const input = document.getElementById('player-name');
-        const btn = document.getElementById('save-player');
-        if (input) input.style.display = 'none';
-        if (btn) btn.style.display = 'none';
-    } else {
-        document.getElementById('save-player').onclick = () => {
-            const input = document.getElementById('player-name');
-            const name = input.value.trim();
-            if (!name) return;
-            if (!state.players[name]) state.players[name] = { highScore: 0, savedDrawings: [] };
-            state.currentPlayer = name;
-            localStorage.setItem('currentPlayer', name);
-            persistPlayers();
-            input.value = '';
-            renderPlayer();
-        };
-    }
+    const name = external || state.currentPlayer || 'אורח';
+    if (!state.players[name]) state.players[name] = { highScore: 0, savedDrawings: [] };
+    state.currentPlayer = name;
+    localStorage.setItem('currentPlayer', name);
+    persistPlayers();
     renderPlayer();
 }
 
 function renderPlayer() {
-    const info = document.getElementById('player-info');
-    if (state.currentPlayer) {
-        const face = state.externalEmoji || '👋';
-        info.innerHTML = `<p>שלום, <strong>${escapeHtml(state.currentPlayer)}</strong> ${escapeHtml(face)}</p>`;
-        state.highScore = state.players[state.currentPlayer].highScore || state.highScore;
-        updateScore(state.score);
-        renderGallery();
-    } else {
-        info.innerHTML = '<p>התחבר כדי לשמור ציורים ושיאים</p>';
-    }
+    if (!state.currentPlayer) return;
+    state.highScore = state.players[state.currentPlayer].highScore || state.highScore;
+    updateScore(state.score);
+    renderGallery();
 }
 
 function renderGallery() {

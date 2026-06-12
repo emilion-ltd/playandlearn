@@ -236,7 +236,9 @@ async function loadSceneIntoStudio(i, autodetect) {
     if (scene.pitch) { pitch.value = scene.pitch; document.getElementById('studio-pitch-value').textContent = scene.pitch; }
     if (scene.voiceIndex != null) { const v = document.getElementById('studio-voice'); if (v) v.value = scene.voiceIndex; }
     if (!studio.raf) startRenderLoop();
-    setStudioStatus(`סצנה ${i + 1}/${studio.scenes.length} — כתוב טקסט ולחץ ▶️ נגן`);
+    // אחרי ייצוא לא דורסים את הודעת ההצלחה ("הסרטון מוכן")
+    if (!studio.keepStatus) setStudioStatus(`סצנה ${i + 1}/${studio.scenes.length} — כתוב טקסט ולחץ ▶️ נגן`);
+    studio.keepStatus = false;
     renderScenesStrip();
 }
 
@@ -956,8 +958,15 @@ async function exportScenes(list) {
     } catch (err) {
         studio.exporting = false;
         setStudioStatus('עובר לשיטת גיבוי... ' + (err.message || ''));
-        await exportScenesCapture(list);
+        try {
+            await exportScenesCapture(list);
+        } catch (err2) {
+            // לעולם לא משאירים את הייצוא "תקוע" — מציגים שגיאה ברורה ומשחררים
+            studio.exporting = false;
+            setStudioStatus('😕 יצירת הסרטון נכשלה: ' + (err2.message || '') + ' — נסו שוב');
+        }
     }
+    studio.keepStatus = true;   // שומרים את הודעת התוצאה (הצלחה/שגיאה) על המסך
     loadSceneIntoStudio(studio.sceneIndex, false);
 }
 
@@ -985,7 +994,7 @@ async function exportViaMux(list) {
     const mime = pickVideoOnlyMime();
     const videoStream = studio.canvas.captureStream(30);
     studio.videoChunks = [];
-    const recorder = new MediaRecorder(videoStream, { mimeType: mime });
+    const recorder = new MediaRecorder(videoStream, mime ? { mimeType: mime } : undefined);
     recorder.ondataavailable = (e) => { if (e.data.size) studio.videoChunks.push(e.data); };
     const done = new Promise((res) => { recorder.onstop = res; });
     recorder.start();
@@ -1006,11 +1015,14 @@ async function exportViaMux(list) {
     }
     recorder.stop();
     await done;
+    // החזרת ניתוב הקול לרמקולים (אחרת ▶️ נגן יהיה שקט אחרי ייצוא)
     try { studio.analyser.disconnect(); } catch (e) { /* ignore */ }
+    try { studio.analyser.connect(studio.audioCtx.destination); } catch (e) { /* ignore */ }
 
     // 3) בניית קובץ WAV מכל הקטעים + שתיקות בין סצנות
     const wavBlob = buildWavFromSegments(segs, sr);
-    const videoBlob = new Blob(studio.videoChunks, { type: 'video/webm' });
+    const isMp4Rec = (mime || '').startsWith('video/mp4') || (studio.videoChunks[0] && (studio.videoChunks[0].type || '').includes('mp4'));
+    const videoBlob = new Blob(studio.videoChunks, { type: isMp4Rec ? 'video/mp4' : 'video/webm' });
     if (videoBlob.size === 0) throw new Error('לא הוקלט וידאו (MediaRecorder לא תומך?)');
 
     // 4) מיזוג ל-MP4 (אודיו AAC)
@@ -1143,19 +1155,30 @@ function encodeWavMono(samples, sr) {
 }
 
 function pickVideoOnlyMime() {
-    const cands = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-    for (const m of cands) { if (MediaRecorder.isTypeSupported(m)) return m; }
-    return 'video/webm';
+    // iOS/Safari לא תומך ב-WEBM בכלל — שם מקליטים MP4 (H.264) ישירות.
+    const cands = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+    for (const m of cands) {
+        try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (e) { /* ignore */ }
+    }
+    return '';
 }
 
 async function muxToMp4(videoBlob, wavBlob) {
     if (!videoBlob || videoBlob.size === 0) throw new Error('אין וידאו להמרה');
     const ff = await ensureFfmpeg();
-    await ff.writeFile('v.webm', new Uint8Array(await videoBlob.arrayBuffer()));
+    // שם קובץ הקלט לפי הקונטיינר האמיתי (ב-iOS ההקלטה היא כבר MP4)
+    const inName = (videoBlob.type || '').includes('mp4') ? 'v.mp4' : 'v.webm';
+    await ff.writeFile(inName, new Uint8Array(await videoBlob.arrayBuffer()));
     await ff.writeFile('a.wav', new Uint8Array(await wavBlob.arrayBuffer()));
     // ff.exec מחזיר קוד יציאה (לא זורק!) — חובה לבדוק אותו ואת גודל הפלט,
     // אחרת אפשר לקבל out.mp4 ריק ולהציג/להוריד קובץ 0 בייט בלי שום שגיאה.
-    const code = await ff.exec(['-i', 'v.webm', '-i', 'a.wav', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', 'out.mp4']);
+    // אם הווידאו כבר H.264 (הקלטת MP4 של ספארי) מעתיקים בלי קידוד מחדש — מהיר בהרבה במובייל.
+    // חשוב: libx264 דורש רוחב/גובה זוגיים — הקנבס הרספונסיבי יוצא לעיתים קרובות
+    // אי-זוגי (במיוחד במובייל) ואז הקידוד נכשל. הפילטר מעגל לממד זוגי.
+    const vCodec = inName === 'v.mp4'
+        ? ['-c:v', 'copy']
+        : ['-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p'];
+    const code = await ff.exec(['-i', inName, '-i', 'a.wav', ...vCodec, '-c:a', 'aac', '-shortest', 'out.mp4']);
     if (code !== 0) throw new Error('מיזוג ffmpeg נכשל (code ' + code + ')');
     const out = await ff.readFile('out.mp4');
     if (!out || out.length === 0) throw new Error('הפלט של ffmpeg ריק');
@@ -1163,7 +1186,6 @@ async function muxToMp4(videoBlob, wavBlob) {
 }
 
 async function exportScenesCapture(list) {
-    if (studio.exporting) return;
     if (!studio.canvas.captureStream) { setStudioStatus('הדפדפן לא תומך בייצוא וידאו'); return; }
     if (!list || list.length === 0) { setStudioStatus('אין סצנות לייצוא'); return; }
 
@@ -1175,44 +1197,51 @@ async function exportScenesCapture(list) {
     const mode = premiumProvider() ? 'premium' : (studio.recordedBlob ? 'rec' : 'synth');
     await ensureAudioCtx();
     const dest = studio.audioCtx.createMediaStreamDestination();
+    // חשוב: הקול מנותב רק להקלטה (dest) ולא לרמקולים — כך לא שומעים
+    // צפצופים/קולות בזמן יצירת הסרטון. ההקלטה עובדת גם בלי חיבור לרמקול.
+    try { studio.analyser.disconnect(); } catch (e) { /* ignore */ }
     studio.analyser.connect(dest);
-    studio.analyser.connect(studio.audioCtx.destination);
 
-    const videoStream = studio.canvas.captureStream(30);
-    const tracks = [...videoStream.getVideoTracks(), ...dest.stream.getAudioTracks()];
-    const mixed = new MediaStream(tracks);
+    try {
+        const videoStream = studio.canvas.captureStream(30);
+        const tracks = [...videoStream.getVideoTracks(), ...dest.stream.getAudioTracks()];
+        const mixed = new MediaStream(tracks);
 
-    const pick = pickVideoMime();
-    studio.videoChunks = [];
-    const recorder = new MediaRecorder(mixed, { mimeType: pick.mime });
-    recorder.ondataavailable = (e) => { if (e.data.size) studio.videoChunks.push(e.data); };
-    const done = new Promise((res) => { recorder.onstop = res; });
-    recorder.start();
+        const pick = pickVideoMime();
+        studio.videoChunks = [];
+        const recorder = new MediaRecorder(mixed, pick.mime ? { mimeType: pick.mime } : undefined);
+        recorder.ondataavailable = (e) => { if (e.data.size) studio.videoChunks.push(e.data); };
+        const done = new Promise((res) => { recorder.onstop = res; });
+        recorder.start();
 
-    for (let i = 0; i < list.length; i++) {
-        const scene = list[i];
-        setStudioStatus(`🎬 מקליט סצנה ${i + 1}/${list.length}...`);
-        await loadStudioImage(scene.src);
-        studio.mouth = scene.mouth || { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
-        studio.eyes = scene.eyes || null;
-        studio.mouth2 = scene.mouth2 || null;
-        studio.eyes2 = scene.eyes2 || null;
-        studio.activeWho = scene.who || 1;
-        await sleepFrames(450);
-        await playSceneAudio(scene, mode);   // הקול נכנס לקובץ + מסנכרן את הפה
-        await sleepFrames(350);
-    }
+        for (let i = 0; i < list.length; i++) {
+            const scene = list[i];
+            setStudioStatus(`🎬 מקליט סצנה ${i + 1}/${list.length}...`);
+            await loadStudioImage(scene.src);
+            studio.mouth = scene.mouth || { x: studio.canvas.width * 0.35, y: studio.canvas.height * 0.6, w: studio.canvas.width * 0.3, h: studio.canvas.height * 0.12 };
+            studio.eyes = scene.eyes || null;
+            studio.mouth2 = scene.mouth2 || null;
+            studio.eyes2 = scene.eyes2 || null;
+            studio.activeWho = scene.who || 1;
+            await sleepFrames(450);
+            await playSceneAudio(scene, mode);   // הקול נכנס לקובץ + מסנכרן את הפה
+            await sleepFrames(350);
+        }
 
-    recorder.stop();
-    await done;
-    studio.exporting = false;
-    try { studio.analyser.disconnect(dest); } catch (e) { /* ignore */ }
-    await finalizeVideo(pick);
-    const voiceNote = mode === 'synth' ? ' (קול דמות — לעברית אמיתית הגדירו קול פרימיום ⚙️)' : '';
-    if (studio.lastVideoExt === 'mp4') {
-        setStudioStatus('✅ הסרטון מוכן כ-MP4 עם קול! אפשר לשתף 📤' + voiceNote);
-    } else {
-        setStudioStatus('✅ הסרטון מוכן (WEBM) עם קול. אם אין קול בנגן של Windows — שתפו לנייד/וואטסאפ או נגנו בכרום 🎬' + voiceNote);
+        recorder.stop();
+        await done;
+        await finalizeVideo(pick);
+        const voiceNote = mode === 'synth' ? ' (קול דמות — לעברית אמיתית הגדירו קול פרימיום ⚙️)' : '';
+        if (studio.lastVideoExt === 'mp4') {
+            setStudioStatus('✅ הסרטון מוכן! צפו בו למטה ואז הורידו או שתפו 📤' + voiceNote);
+        } else {
+            setStudioStatus('✅ הסרטון מוכן (WEBM) עם קול. אם אין קול בנגן של Windows — שתפו לנייד/וואטסאפ או נגנו בכרום 🎬' + voiceNote);
+        }
+    } finally {
+        studio.exporting = false;
+        // החזרת ניתוב הקול לרמקולים עבור נגינה רגילה (▶️)
+        try { studio.analyser.disconnect(); } catch (e) { /* ignore */ }
+        try { studio.analyser.connect(studio.audioCtx.destination); } catch (e) { /* ignore */ }
     }
     loadSceneIntoStudio(studio.sceneIndex, false);
 }
@@ -1307,16 +1336,19 @@ function sleepFrames(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 /* ----------------------------- גמר וידאו + שיתוף ----------------------------- */
 function pickVideoMime() {
-    // מקליטים תמיד ל-WEBM (אמין) וממירים ל-MP4 עם AAC דרך ffmpeg.
-    // חשוב: לא נותנים ל-MediaRecorder לכתוב MP4 — בכרום/אדג' הוא משבץ אודיו
-    // בקידוד Opus בתוך MP4, וזה לא מתנגן ב-Windows Media Player ולא ב-iPhone.
-    const cands = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
-    for (const m of cands) {
-        if (MediaRecorder.isTypeSupported(m)) {
-            return { mime: m, ext: 'webm' };
-        }
+    // בכרום/אדג' מעדיפים WEBM (ואז ממירים ל-MP4 עם AAC דרך ffmpeg) — אסור לתת
+    // לכרום להקליט MP4 ישירות כי הוא משבץ אודיו Opus שלא מתנגן ב-Windows/iPhone.
+    // ב-iOS/ספארי WEBM לא נתמך בכלל — שם מקליטים MP4 נטיבי (H.264+AAC, תקין בכל מקום).
+    const cands = [
+        { mime: 'video/webm;codecs=vp9,opus', ext: 'webm' },
+        { mime: 'video/webm;codecs=vp8,opus', ext: 'webm' },
+        { mime: 'video/webm', ext: 'webm' },
+        { mime: 'video/mp4', ext: 'mp4' },
+    ];
+    for (const c of cands) {
+        try { if (MediaRecorder.isTypeSupported(c.mime)) return c; } catch (e) { /* ignore */ }
     }
-    return { mime: 'video/webm', ext: 'webm' };
+    return { mime: '', ext: 'webm' };
 }
 
 async function finalizeVideo(pick) {
@@ -1686,7 +1718,8 @@ async function convertToMp4(webmBlob) {
         const inName = 'in.webm', outName = 'out.mp4';
         const data = new Uint8Array(await webmBlob.arrayBuffer());
         await ff.writeFile(inName, data);
-        await ff.exec(['-i', inName, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', outName]);
+        // scale מעגל לממדים זוגיים — חובה ל-libx264 (קנבס רספונסיבי יוצא אי-זוגי)
+        await ff.exec(['-i', inName, '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', outName]);
         const out = await ff.readFile(outName);
         return new Blob([out.buffer], { type: 'video/mp4' });
     } catch (err) {
